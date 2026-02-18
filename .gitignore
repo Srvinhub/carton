@@ -1,0 +1,58 @@
+.NET Core
+bin/
+obj/
+
+Visual Studio
+.vs/
+
+Rider
+.idea/
+
+macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Bb]in/
+[Oo]bj/
+
+NuGet
+packages/
+*.nupkg
+*.snupkg
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+Avalonia
+*.avalonia.diagnostic.json
+
+Logs
+*.log
+logs/
+
+Test results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+
+Others
+*.bak
+*.cache
+sing-box-for-apple-dev/
