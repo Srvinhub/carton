@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/carton.Core/carton.Core.csproj" />
+    <Project Path="src/carton.GUI/carton.GUI.csproj" />
+  </Folder>
+</Solution>

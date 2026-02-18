@@ -1,0 +1,195 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:carton.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="400"
+             x:Class="carton.Views.Pages.DashboardView"
+             x:DataType="vm:DashboardViewModel">
+
+  <ScrollViewer>
+    <StackPanel Margin="20" Spacing="16">
+      <Border Classes="card" Padding="20" IsEnabled="{Binding ShowStartupSelector}">
+        <StackPanel Spacing="14">
+          <TextBlock Text="{DynamicResource Dashboard.Section.Configuration}" FontSize="22" FontWeight="SemiBold"/>
+
+          <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                  BorderThickness="1"
+                  CornerRadius="8"
+                  Padding="10">
+            <StackPanel Spacing="10">
+              <Grid ColumnDefinitions="Auto,120,Auto,*" ColumnSpacing="10">
+                <TextBlock Grid.Column="0"
+                           Text="{DynamicResource Dashboard.Field.Port}"
+                           VerticalAlignment="Center"/>
+                <TextBox Grid.Column="1"
+                         Text="{Binding InboundPortText}"
+                         IsReadOnly="{Binding IsPortInputReadOnly}"
+                         VerticalAlignment="Center"/>
+                <Button Grid.Column="2"
+                        Content="{Binding PortEditButtonText}"
+                        Command="{Binding TogglePortEditCommand}"/>
+              </Grid>
+
+              <StackPanel Orientation="Horizontal" Spacing="18">
+                <CheckBox Content="{DynamicResource Dashboard.Option.AllowLan}"
+                          IsChecked="{Binding AllowLanConnections}"/>
+                <CheckBox Content="{DynamicResource Dashboard.Option.SystemProxy}"
+                          IsChecked="{Binding EnableSystemProxy}"/>
+                <CheckBox Content="{DynamicResource Dashboard.Option.Tun}"
+                          IsChecked="{Binding EnableTunInbound}"/>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <StackPanel Spacing="12" IsVisible="{Binding ShowStartupSelector}">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+              <TextBlock Grid.Column="0"
+                         Text="{DynamicResource Dashboard.StartupPrompt}"
+                         VerticalAlignment="Center"
+                         Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+              <Button Grid.Column="1"
+                      Content="{DynamicResource Dashboard.Button.Start}"
+                      Command="{Binding StartWithSelectedProfileCommand}"
+                      Classes="accent"/>
+            </Grid>
+
+            <ItemsControl ItemsSource="{Binding AvailableProfiles}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="vm:DashboardProfileItemViewModel">
+                  <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                          BorderThickness="0,0,0,1"
+                          Padding="6,10">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                      <RadioButton Grid.Column="0"
+                                   GroupName="startup-profile"
+                                   IsChecked="{Binding IsSelected}"
+                                   Command="{Binding $parent[ItemsControl].((vm:DashboardViewModel)DataContext).SelectStartupProfileCommand}"
+                                   CommandParameter="{Binding}"
+                                   VerticalAlignment="Center"/>
+                      <TextBlock Grid.Column="1"
+                                 Text="{Binding Name}"
+                                 FontSize="16"
+                                 VerticalAlignment="Center"/>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock Text="{Binding StartupStatus}"
+                       IsVisible="{Binding StartupStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <StackPanel IsVisible="{Binding ShowDashboardMetrics}" Spacing="16">
+        <Grid ColumnDefinitions="2*,3*,2*" ColumnSpacing="16">
+          <Border Classes="card" Padding="20">
+            <StackPanel Spacing="8">
+              <TextBlock Text="{DynamicResource Dashboard.ClashMode}"
+                         FontSize="14"
+                         Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+              <ItemsControl ItemsSource="{Binding ClashModeOptions}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="vm:DashboardClashModeOptionViewModel">
+                    <RadioButton Content="{Binding DisplayName}"
+                                 GroupName="clash-mode"
+                                 IsChecked="{Binding IsSelected}"
+                                 Command="{Binding $parent[ItemsControl].((vm:DashboardViewModel)DataContext).ChangeClashModeCommand}"
+                                 CommandParameter="{Binding}"
+                                 Margin="0,0,0,4"/>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
+
+          <Border Grid.Column="1" Classes="card" Padding="20">
+            <StackPanel Spacing="14">
+              <TextBlock Text="{DynamicResource Dashboard.TrafficStats}"
+                         FontSize="14"
+                         Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                <StackPanel Grid.Column="0" Spacing="4" Margin="0,0,0,4">
+                  <TextBlock Text="{DynamicResource Dashboard.Label.UploadSpeed}"
+                             FontSize="12"
+                             Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                  <TextBlock Text="{Binding UploadSpeed}"
+                             FontSize="20"
+                             FontWeight="SemiBold"
+                             Margin="0,4,0,0"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="4" Margin="0,0,0,4">
+                  <TextBlock Text="{DynamicResource Dashboard.Label.DownloadSpeed}"
+                             FontSize="12"
+                             Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                  <TextBlock Text="{Binding DownloadSpeed}"
+                             FontSize="20"
+                             FontWeight="SemiBold"
+                             Margin="0,4,0,0"/>
+                </StackPanel>
+              </Grid>
+
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                <StackPanel Grid.Column="0" Spacing="4">
+                  <TextBlock Text="{DynamicResource Dashboard.Label.TotalUpload}"
+                             FontSize="12"
+                             Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                  <TextBlock Text="{Binding TotalUpload}"
+                             FontSize="18"
+                             FontWeight="SemiBold"
+                             Margin="0,4,0,0"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="4">
+                  <TextBlock Text="{DynamicResource Dashboard.Label.TotalDownload}"
+                             FontSize="12"
+                             Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                  <TextBlock Text="{Binding TotalDownload}"
+                             FontSize="18"
+                             FontWeight="SemiBold"
+                             Margin="0,4,0,0"/>
+                </StackPanel>
+              </Grid>
+            </StackPanel>
+          </Border>
+
+          <Border Grid.Column="2" Classes="card" Padding="20">
+            <StackPanel Spacing="8"
+                        HorizontalAlignment="Center">
+              <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                <Ellipse Width="16"
+                         Height="16"
+                         VerticalAlignment="Center"
+                         Fill="{Binding IsConnected, Converter={StaticResource ConnectionStatusConverter}}"/>
+                <StackPanel>
+                  <TextBlock Text="{DynamicResource Dashboard.StatusLabel}"
+                             FontSize="12"
+                             Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                  <TextBlock Text="{Binding StatusText}"
+                             FontSize="20"
+                             FontWeight="SemiBold"/>
+                </StackPanel>
+              </StackPanel>
+              <Button Content="{DynamicResource Dashboard.Button.Stop}"
+                      Command="{Binding StopConnectionCommand}"/>
+            </StackPanel>
+          </Border>
+        </Grid>
+        <Border Classes="card" Padding="20">
+          <StackPanel>
+            <TextBlock Text="{DynamicResource Dashboard.CurrentProfileLabel}"
+                       FontSize="12"
+                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+            <TextBlock Text="{Binding CurrentProfile}"
+                       FontSize="16"
+                       FontWeight="SemiBold"
+                       Margin="0,4,0,0"/>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+
+</UserControl>

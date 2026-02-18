@@ -1,0 +1,330 @@
+name: Build & Publish Carton
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - 'beta*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'SemVer (e.g. 1.2.3 or 1.2.3-beta.1)'
+        required: true
+        type: string
+      channel:
+        description: 'Release train to publish'
+        required: true
+        type: choice
+        default: release
+        options:
+          - release
+          - beta
+      tag:
+        description: 'Optional tag to create (defaults to v<version>-<channel> for manual runs)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  NUGET_XMLDOC_MODE: skip
+
+jobs:
+  metadata:
+    name: Resolve metadata
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      channel: ${{ steps.meta.outputs.channel }}
+      is_prerelease: ${{ steps.meta.outputs.is_prerelease }}
+      tag: ${{ steps.meta.outputs.tag }}
+      release_name: ${{ steps.meta.outputs.release_name }}
+    steps:
+      - name: Compute release metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          event="${{ github.event_name }}"
+          channel="release"
+          tag=""
+          version=""
+          ref_name="${{ github.ref_name }}"
+
+          if [[ "$event" == "workflow_dispatch" ]]; then
+            version="${{ inputs.version }}"
+            channel="${{ inputs.channel }}"
+            tag="${{ inputs.tag }}"
+            if [[ -z "$tag" ]]; then
+              tag="v${version}-${channel}"
+            fi
+          else
+            tag="$ref_name"
+            if [[ "$ref_name" == v* ]]; then
+              version="${ref_name#v}"
+            else
+              version="$ref_name"
+            fi
+
+            shopt -s nocasematch
+            if [[ "$ref_name" == beta* ]] || [[ "$ref_name" == *-beta* ]] || [[ "$ref_name" == *-rc* ]] || [[ "$ref_name" == *-preview* ]]; then
+              channel="beta"
+            fi
+            shopt -u nocasematch
+          fi
+
+          if [[ -z "$version" ]]; then
+            echo "Version could not be resolved. Provide inputs.version when running manually." >&2
+            exit 1
+          fi
+
+          if [[ "$channel" != "beta" ]]; then
+            channel="release"
+          fi
+
+          is_prerelease="false"
+          shopt -s nocasematch
+          if [[ "$channel" == "beta" ]] || [[ "$version" == *-beta* ]] || [[ "$version" == *-rc* ]] || [[ "$version" == *-preview* ]]; then
+            is_prerelease="true"
+          fi
+          shopt -u nocasematch
+
+          release_name="Carton ${version}"
+
+          {
+            echo "version=${version}"
+            echo "channel=${channel}"
+            echo "is_prerelease=${is_prerelease}"
+            echo "tag=${tag}"
+            echo "release_name=${release_name}"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.rid }}
+    needs: metadata
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            mainExe: carton.GUI.exe
+            icon: src/carton.GUI/Assets/avalonia-logo.ico
+            portableExt: zip
+          - os: windows-latest
+            rid: win-arm64
+            mainExe: carton.GUI.exe
+            icon: src/carton.GUI/Assets/avalonia-logo.ico
+            portableExt: zip
+          - os: ubuntu-22.04
+            rid: linux-x64
+            mainExe: carton.GUI
+            icon: src/carton.GUI/Assets/carton_icon.png
+            portableExt: tar.gz
+          - os: ubuntu-22.04
+            rid: linux-arm64
+            mainExe: carton.GUI
+            icon: src/carton.GUI/Assets/carton_icon.png
+            portableExt: tar.gz
+    env:
+      VERSION: ${{ needs.metadata.outputs.version }}
+      CHANNEL_KEY: ${{ matrix.rid }}-${{ needs.metadata.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install native dependencies (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang zlib1g-dev libkrb5-dev pkg-config
+
+      - name: Install Velopack CLI (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          dotnet tool update --global vpk --version 0.0.1298
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: Install Velopack CLI (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          dotnet tool update --global vpk --version 0.0.1298
+          "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Publish (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          publish_dir="$GITHUB_WORKSPACE/artifacts/publish/${{ matrix.rid }}"
+          mkdir -p "$publish_dir"
+          dotnet publish src/carton.GUI/carton.GUI.csproj \
+            -c Release \
+            -r ${{ matrix.rid }} \
+            -o "$publish_dir" \
+            /p:PublishAot=true \
+            /p:SelfContained=true \
+            /p:StripSymbols=true \
+            /p:InvariantGlobalization=true \
+            /p:IncludeNativeLibrariesForSelfExtract=true \
+            /p:EnableCompressionInSingleFile=true
+          echo "PUBLISH_DIR=$publish_dir" >> "$GITHUB_ENV"
+
+      - name: Publish (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $publishDir = "$env:GITHUB_WORKSPACE\artifacts\publish\${{ matrix.rid }}"
+          New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
+          dotnet publish src\carton.GUI\carton.GUI.csproj `
+            -c Release `
+            -r ${{ matrix.rid }} `
+            -o $publishDir `
+            /p:PublishAot=true `
+            /p:SelfContained=true `
+            /p:StripSymbols=true `
+            /p:InvariantGlobalization=true `
+            /p:IncludeNativeLibrariesForSelfExtract=true `
+            /p:EnableCompressionInSingleFile=true
+          "PUBLISH_DIR=$publishDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Create portable archive (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          pack_dir="$GITHUB_WORKSPACE/artifacts/pack/${CHANNEL_KEY}"
+          mkdir -p "$pack_dir"
+          portable_name="Carton-${VERSION}-${{ matrix.rid }}-portable.tar.gz"
+          tar -C "$PUBLISH_DIR" -czf "$pack_dir/$portable_name" .
+          echo "PACK_DIR=$pack_dir" >> "$GITHUB_ENV"
+
+      - name: Create portable archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $packDir = "$env:GITHUB_WORKSPACE\artifacts\pack\$env:CHANNEL_KEY"
+          New-Item -ItemType Directory -Path $packDir -Force | Out-Null
+          $portableName = "Carton-$env:VERSION-${{ matrix.rid }}-portable.zip"
+          Compress-Archive -Path "$env:PUBLISH_DIR\*" -DestinationPath "$packDir\$portableName" -Force
+          "PACK_DIR=$packDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Package with Velopack (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          icon_path=$(realpath '${{ matrix.icon }}')
+          vpk pack \
+            --packId carton \
+            --packVersion "$VERSION" \
+            --channel "$CHANNEL_KEY" \
+            --runtime ${{ matrix.rid }} \
+            --packDir "$PUBLISH_DIR" \
+            --mainExe '${{ matrix.mainExe }}' \
+            --packTitle 'Carton' \
+            --icon "$icon_path" \
+            --outputDir "$PACK_DIR"
+          echo "$CHANNEL_KEY" > "$PACK_DIR/channel.txt"
+
+      - name: Package with Velopack (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $iconPath = (Resolve-Path '${{ matrix.icon }}').Path
+          vpk pack `
+            --packId carton `
+            --packVersion $env:VERSION `
+            --channel $env:CHANNEL_KEY `
+            --runtime ${{ matrix.rid }} `
+            --packDir $env:PUBLISH_DIR `
+            --mainExe '${{ matrix.mainExe }}' `
+            --packTitle 'Carton' `
+            --icon $iconPath `
+            --outputDir $env:PACK_DIR
+          Set-Content -Path "$env:PACK_DIR\channel.txt" -Value $env:CHANNEL_KEY
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vpk-${{ env.CHANNEL_KEY }}
+          path: ${{ env.PACK_DIR }}
+
+  publish:
+    name: Publish GitHub release
+    runs-on: ubuntu-latest
+    needs:
+      - metadata
+      - build
+    if: ${{ needs.build.result == 'success' }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install Velopack CLI
+        shell: bash
+        run: |
+          dotnet tool update --global vpk --version 0.0.1298
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: Upload release via Velopack
+        shell: bash
+        env:
+          REPO_URL: https://github.com/${{ github.repository }}
+          VERSION: ${{ needs.metadata.outputs.version }}
+          TAG: ${{ needs.metadata.outputs.tag }}
+          RELEASE_NAME: ${{ needs.metadata.outputs.release_name }}
+          IS_PRERELEASE: ${{ needs.metadata.outputs.is_prerelease }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          artifacts=(dist/*)
+          if [[ ${#artifacts[@]} -eq 0 ]]; then
+            echo "No packaged artifacts were downloaded." >&2
+            exit 1
+          fi
+
+          first=1
+          for artifact in "${artifacts[@]}"; do
+            channel="${artifact##*/}"
+            channel="${channel#vpk-}"
+            flags=(
+              upload github
+              --repoUrl "$REPO_URL"
+              --token "$TOKEN"
+              --channel "$channel"
+              --outputDir "$artifact"
+              --tag "$TAG"
+              --releaseName "$RELEASE_NAME"
+            )
+
+            if [[ "$first" -eq 1 ]]; then
+              flags+=(--publish)
+              if [[ "$IS_PRERELEASE" == "true" ]]; then
+                flags+=(--pre)
+              fi
+              first=0
+            else
+              flags+=(--merge)
+              if [[ "$IS_PRERELEASE" == "true" ]]; then
+                flags+=(--pre)
+              fi
+            fi
+
+            vpk "${flags[@]}"
+          done

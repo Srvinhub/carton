@@ -1,0 +1,74 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:carton.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="400"
+             x:Class="carton.Views.Pages.LogsView"
+             x:DataType="vm:LogsViewModel">
+
+  <Grid RowDefinitions="Auto,*">
+    <Grid Grid.Row="0" Margin="10" RowDefinitions="Auto,Auto">
+      <StackPanel Grid.Row="0" Orientation="Horizontal">
+        <Button Content="{DynamicResource Logs.Button.Clear}"
+                Command="{Binding ClearLogsCommand}"
+                Margin="0,0,10,0"/>
+        <Button Content="{DynamicResource Logs.Button.CopySelected}"
+                Command="{Binding CopySelectedLogCommand}"
+                Margin="0,0,10,0"/>
+        <Button Content="{DynamicResource Logs.Button.CopyAll}"
+                Command="{Binding CopyAllLogsCommand}"/>
+      </StackPanel>
+
+      <Grid Grid.Row="1" Margin="0,10,0,0" ColumnDefinitions="Auto,*,Auto">
+        <ComboBox Grid.Column="0"
+                  Width="110"
+                  ItemsSource="{Binding LogLevels}"
+                  SelectedItem="{Binding SelectedLevel}"
+                  Margin="0,0,10,0"/>
+        <TextBox Grid.Column="1"
+                 Text="{Binding SearchText}"
+                 Watermark="{DynamicResource Logs.Search.Watermark}"
+                 MinWidth="220"
+                 HorizontalAlignment="Stretch"/>
+        <TextBlock Grid.Column="2"
+                   Margin="10,0,0,0"
+                   VerticalAlignment="Center"
+                   Foreground="White">
+          <Run Text="{DynamicResource Logs.Label.CountPrefix}"/>
+          <Run Text="{Binding Logs.Count}"/>
+        </TextBlock>
+      </Grid>
+    </Grid>
+
+    <ListBox Grid.Row="1"
+             Margin="10"
+             ItemsSource="{Binding Logs}"
+             SelectedItem="{Binding SelectedLog}"
+             BorderThickness="0"
+             Background="Transparent">
+      <ListBox.KeyBindings>
+        <KeyBinding Gesture="Ctrl+C" Command="{Binding CopySelectedLogCommand}"/>
+      </ListBox.KeyBindings>
+      <ListBox.ItemsPanel>
+        <ItemsPanelTemplate>
+          <VirtualizingStackPanel/>
+        </ItemsPanelTemplate>
+      </ListBox.ItemsPanel>
+      <ListBox.ItemTemplate>
+          <DataTemplate DataType="vm:LogEntryViewModel">
+            <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="6,4">
+              <Grid ColumnDefinitions="80,70,*" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Text="{Binding Time}" Foreground="White"/>
+                <TextBlock Grid.Column="1" Text="{Binding Level}" Foreground="White"/>
+                <TextBlock Grid.Column="2" Text="{Binding Message}" Foreground="White" TextWrapping="Wrap"/>
+              </Grid>
+            </Border>
+          </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </Grid>
+
+</UserControl>

@@ -1,0 +1,162 @@
+<UserControl x:Name="GroupsViewRoot"
+             xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:carton.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="carton.Views.Pages.GroupsView"
+             x:DataType="vm:GroupsViewModel">
+
+  <Grid RowDefinitions="Auto,Auto,*">
+    <Border Grid.Row="0"
+            Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
+            Padding="16">
+      <StackPanel Orientation="Horizontal" Spacing="12">
+        <TextBlock Text="代理组"
+                   FontSize="24"
+                   FontWeight="SemiBold"/>
+        <ProgressBar Width="80"
+                     Height="4"
+                     IsVisible="{Binding IsLoading}"
+                     IsIndeterminate="True"
+                     Margin="12,0,0,0"/>
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Row="1"
+            IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+            Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+            BorderThickness="0,0,0,1"
+            Padding="10,6">
+      <TextBlock Text="{Binding StatusMessage}"
+                 VerticalAlignment="Center"/>
+    </Border>
+
+    <Grid Grid.Row="2"
+          Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
+          RowDefinitions="Auto,*"
+          RowSpacing="12">
+      <ListBox Grid.Row="0"
+               Margin="16,8,16,0"
+               ItemsSource="{Binding Groups}"
+               SelectedItem="{Binding SelectedGroup}"
+               BorderThickness="0"
+               Background="Transparent"
+               Padding="0,0,0,12"
+               IsVisible="{Binding ShowGroupTabs}"
+               ScrollViewer.HorizontalScrollBarVisibility="Auto"
+               ScrollViewer.VerticalScrollBarVisibility="Disabled">
+        <ListBox.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Orientation="Horizontal" Spacing="8"/>
+          </ItemsPanelTemplate>
+        </ListBox.ItemsPanel>
+        <ListBox.ItemTemplate>
+          <DataTemplate DataType="vm:GroupItemViewModel">
+            <Border Padding="12,8"
+                    CornerRadius="6"
+                    Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                    BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                    BorderThickness="1">
+              <StackPanel>
+                <TextBlock Text="{Binding Name}"
+                           FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding SelectedOutbound, StringFormat='当前：{0}'}"
+                           FontSize="11"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+        <ListBox.Styles>
+          <Style Selector="ListBoxItem">
+            <Setter Property="Margin" Value="0,0,4,0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+          </Style>
+          <Style Selector="ListBoxItem:selected Border">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltMediumHighBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColor}"/>
+          </Style>
+        </ListBox.Styles>
+      </ListBox>
+
+      <Border Grid.Row="1"
+              Margin="16"
+              Padding="16"
+              CornerRadius="12"
+              Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
+              BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+              BorderThickness="1">
+        <ContentControl Content="{Binding SelectedGroup}">
+          <ContentControl.ContentTemplate>
+            <DataTemplate DataType="vm:GroupItemViewModel">
+              <Grid RowDefinitions="Auto,*" RowSpacing="12">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBlock Text="{Binding Name}"
+                             FontSize="18"
+                             FontWeight="SemiBold"/>
+                  <TextBlock Text="{Binding Type}"
+                             FontSize="12"
+                             Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                  <TextBlock Text="{Binding SelectedOutbound, StringFormat='当前：{0}'}"
+                             FontSize="12"
+                             Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                  <Button Content="测速"
+                          Command="{Binding DataContext.TestCurrentGroupCommand, ElementName=GroupsViewRoot}"
+                          Margin="12,0,0,0"
+                          Padding="12,4"/>
+                </StackPanel>
+                <ScrollViewer Grid.Row="1">
+                  <ItemsControl ItemsSource="{Binding Items}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate DataType="vm:OutboundItemViewModel">
+                        <Button Command="{Binding SelectOutboundCommand}"
+                                CommandParameter="{Binding Tag}"
+                                Margin="0,4,8,4"
+                                Padding="10,6"
+                                CornerRadius="6"
+                                Tag="{Binding IsSelected}">
+                          <Button.Styles>
+                            <Style Selector="Button">
+                              <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltHighBrush}"/>
+                              <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
+                              <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                            </Style>
+                            <Style Selector="Button:pointerover /template/ ContentPresenter">
+                              <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeHighBrush}"/>
+                            </Style>
+                            <Style Selector="Button[Tag=True]">
+                              <Setter Property="Background" Value="{DynamicResource SystemAccentColor}"/>
+                              <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColor}"/>
+                              <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                            </Style>
+                          </Button.Styles>
+                          <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="{Binding Tag}"/>
+                            <TextBlock Text="{Binding Delay, StringFormat='{}{0}ms'}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                          </StackPanel>
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <WrapPanel/>
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                  </ItemsControl>
+                </ScrollViewer>
+              </Grid>
+            </DataTemplate>
+          </ContentControl.ContentTemplate>
+        </ContentControl>
+      </Border>
+    </Grid>
+  </Grid>
+
+</UserControl>

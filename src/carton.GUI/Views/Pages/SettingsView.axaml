@@ -1,0 +1,139 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:carton.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="600"
+             x:Class="carton.Views.Pages.SettingsView"
+             x:DataType="vm:SettingsViewModel">
+
+  <ScrollViewer>
+    <StackPanel Margin="20" Spacing="16">
+      <TextBlock Text="{DynamicResource Settings.Section.Kernel}" FontSize="18" FontWeight="SemiBold"/>
+
+      <Border Classes="card" Padding="16">
+        <StackPanel Spacing="12">
+          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+            <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Kernel.Version}" VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="1" Text="{Binding KernelVersion}" 
+                       FontWeight="Medium" VerticalAlignment="Center"/>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+              <Button Content="{DynamicResource Settings.Kernel.CheckUpdate}" Command="{Binding CheckUpdateCommand}"
+                      IsEnabled="{Binding !IsUpdatingKernel}"/>
+            </StackPanel>
+          </Grid>
+          
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" IsVisible="{Binding IsKernelInstalled}">
+            <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Kernel.Path}" VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="1" Text="{Binding KernelPath}" 
+                       TextTrimming="CharacterEllipsis"
+                       FontSize="11"
+                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+          </Grid>
+
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+            <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Kernel.Latest}" VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="1" Text="{Binding LatestVersion}" VerticalAlignment="Center"/>
+          </Grid>
+
+          <ProgressBar IsIndeterminate="False"
+                       Value="{Binding UpdateProgress}"
+                       Maximum="100"
+                       IsVisible="{Binding IsUpdatingKernel}"
+                       Height="4"/>
+          
+          <TextBlock Text="{Binding UpdateStatus}"
+                     IsVisible="{Binding IsUpdatingKernel}"
+                     FontSize="12"
+                     Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="{DynamicResource Settings.Kernel.Update}" Command="{Binding UpdateKernelCommand}"
+                    Classes="accent"
+                    IsEnabled="{Binding !IsUpdatingKernel}"
+                    IsVisible="{Binding IsKernelInstalled}"/>
+            <Button Content="{DynamicResource Settings.Kernel.Install}" Command="{Binding UpdateKernelCommand}"
+                    Classes="accent"
+                    IsEnabled="{Binding !IsUpdatingKernel}"
+                    IsVisible="{Binding !IsKernelInstalled}"/>
+            <Button Content="{DynamicResource Settings.Kernel.Uninstall}" Command="{Binding UninstallKernelCommand}"
+                    IsEnabled="{Binding !IsUpdatingKernel}"
+                    IsVisible="{Binding IsKernelInstalled}"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <TextBlock Text="{DynamicResource Settings.Section.General}" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,0"/>
+
+      <Border Classes="card" Padding="16">
+        <StackPanel Spacing="12">
+          <CheckBox Content="{DynamicResource Settings.General.StartAtLogin}" IsChecked="{Binding StartAtLogin}"/>
+          <CheckBox Content="{DynamicResource Settings.General.AutoStartOnLaunch}" IsChecked="{Binding AutoStartOnLaunch}"/>
+        </StackPanel>
+      </Border>
+
+      <TextBlock Text="{DynamicResource Settings.Section.Appearance}" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,0"/>
+
+      <Border Classes="card" Padding="16">
+        <StackPanel Spacing="12">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+            <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Appearance.Theme}" VerticalAlignment="Center"/>
+            <ComboBox Grid.Column="1"
+                      ItemsSource="{Binding Themes}"
+                      SelectedItem="{Binding SelectedTheme}"
+                      HorizontalAlignment="Left"
+                      MinWidth="150"/>
+          </Grid>
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+            <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Appearance.Language}" VerticalAlignment="Center"/>
+            <ComboBox Grid.Column="1"
+                      ItemsSource="{Binding Languages}"
+                      SelectedItem="{Binding SelectedLanguage}"
+                      HorizontalAlignment="Left"
+                      MinWidth="150">
+              <ComboBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding DisplayName}"/>
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <TextBlock Text="{DynamicResource Settings.Section.Data}" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,0"/>
+
+      <Border Classes="card" Padding="16">
+        <StackPanel Spacing="12">
+          <Button Content="{DynamicResource Settings.Data.OpenFolder}" Command="{Binding OpenDataFolderCommand}"
+                  HorizontalAlignment="Left"/>
+          <Button Content="{DynamicResource Settings.Data.Backup.Export}" Command="{Binding ExportBackupCommand}"
+                  IsEnabled="{Binding !IsDataOperationInProgress}"
+                  HorizontalAlignment="Left"/>
+          <Button Content="{DynamicResource Settings.Data.Backup.Import}" Command="{Binding ImportBackupCommand}"
+                  IsEnabled="{Binding !IsDataOperationInProgress}"
+                  HorizontalAlignment="Left"/>
+          <Button Content="{DynamicResource Settings.Data.ClearLogs}" Command="{Binding ClearLogsCommand}"
+                  HorizontalAlignment="Left"/>
+          <Button Content="{DynamicResource Settings.Data.Reset}" Command="{Binding ResetSettingsCommand}"
+                  HorizontalAlignment="Left"/>
+          <TextBlock Text="{Binding DataOperationStatus}"
+                     Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                     TextWrapping="Wrap"/>
+        </StackPanel>
+      </Border>
+
+      <TextBlock Text="{DynamicResource Settings.Section.About}" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,0"/>
+
+      <Border Classes="card" Padding="16">
+        <StackPanel Spacing="8">
+          <TextBlock Text="{DynamicResource Settings.About.Name}" FontSize="16" FontWeight="SemiBold"/>
+          <TextBlock Text="{DynamicResource Settings.About.Version}" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+          <TextBlock Text="{DynamicResource Settings.About.Description}" 
+                     Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+
+</UserControl>
