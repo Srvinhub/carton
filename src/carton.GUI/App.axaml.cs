@@ -39,6 +39,7 @@ public partial class App : Application
             };
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
             desktop.MainWindow = mainWindow;
+            SingleInstanceService.RegisterMainWindow(mainWindow);
             _trayMenuService = new TrayMenuService();
             _trayMenuService.Initialize(this, desktop, mainWindow, viewModel);
             desktop.Exit += OnDesktopExit;

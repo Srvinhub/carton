@@ -89,7 +89,9 @@ public partial class DashboardViewModel : PageViewModelBase
     public bool ShowStartupSelector => !IsConnected;
     public bool ShowDashboardMetrics => IsConnected;
     public bool IsPortInputReadOnly => !IsPortEditing;
-    public string PortEditButtonText => IsPortEditing ? "保存端口" : "编辑端口";
+    public string PortEditButtonText => IsPortEditing
+        ? GetString("Dashboard.Port.Save", "Save Port")
+        : GetString("Dashboard.Port.Edit", "Edit Port");
 
     partial void OnIsConnectedChanged(bool value)
     {
@@ -114,6 +116,11 @@ public partial class DashboardViewModel : PageViewModelBase
             Timeout = TimeSpan.FromSeconds(3)
         };
         InitializeClashModeOptions();
+        _localizationService.LanguageChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(PortEditButtonText));
+            UpdateClashModeOptionDisplayNames();
+        };
     }
 
     public DashboardViewModel(ISingBoxManager singBoxManager, IProfileManager profileManager, IConfigManager configManager, Action<string>? logWriter = null) : this()
@@ -196,21 +203,10 @@ public partial class DashboardViewModel : PageViewModelBase
     private void InitializeClashModeOptions()
     {
         ClashModeOptions.Clear();
-        ClashModeOptions.Add(new DashboardClashModeOptionViewModel
-        {
-            DisplayName = "全局",
-            Mode = "global"
-        });
-        ClashModeOptions.Add(new DashboardClashModeOptionViewModel
-        {
-            DisplayName = "规则",
-            Mode = "rule"
-        });
-        ClashModeOptions.Add(new DashboardClashModeOptionViewModel
-        {
-            DisplayName = "直连",
-            Mode = "direct"
-        });
+        ClashModeOptions.Add(new DashboardClashModeOptionViewModel { Mode = "global" });
+        ClashModeOptions.Add(new DashboardClashModeOptionViewModel { Mode = "rule" });
+        ClashModeOptions.Add(new DashboardClashModeOptionViewModel { Mode = "direct" });
+        UpdateClashModeOptionDisplayNames();
     }
 
     public async Task LoadProfilesAsync()
@@ -691,6 +687,20 @@ public partial class DashboardViewModel : PageViewModelBase
         {
             option.IsSelected = !string.IsNullOrWhiteSpace(mode) &&
                 string.Equals(option.Mode, mode, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private void UpdateClashModeOptionDisplayNames()
+    {
+        foreach (var option in ClashModeOptions)
+        {
+            option.DisplayName = option.Mode switch
+            {
+                "global" => GetString("Dashboard.ClashMode.Global", "Global"),
+                "rule" => GetString("Dashboard.ClashMode.Rule", "Rule"),
+                "direct" => GetString("Dashboard.ClashMode.Direct", "Direct"),
+                _ => option.Mode ?? string.Empty
+            };
         }
     }
 

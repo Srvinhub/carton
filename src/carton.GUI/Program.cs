@@ -2,6 +2,7 @@ using Avalonia;
 using System;
 using carton.Core.Services;
 using Velopack;
+using carton.GUI.Services;
 
 namespace carton;
 
@@ -19,7 +20,21 @@ sealed class Program
             return;
         }
 
-        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        const string instanceKey = "carton-app";
+        if (!SingleInstanceService.TryClaim(instanceKey))
+        {
+            SingleInstanceService.NotifyExistingInstance();
+            return;
+        }
+
+        try
+        {
+            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        }
+        finally
+        {
+            SingleInstanceService.Dispose();
+        }
     }
 
     public static AppBuilder BuildAvaloniaApp()

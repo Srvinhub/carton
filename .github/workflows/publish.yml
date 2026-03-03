@@ -174,7 +174,8 @@ jobs:
             -o "$publish_dir" \
             /p:PublishAot=true \
             /p:SelfContained=true \
-            /p:StripSymbols=true \
+            /p:StripSymbols=false \
+            /p:DebugSymbols=false \
             /p:InvariantGlobalization=true \
             /p:IncludeNativeLibrariesForSelfExtract=true \
             /p:EnableCompressionInSingleFile=true
