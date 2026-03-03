@@ -1,9 +1,10 @@
-using System.IO;
+using System.Buffers;
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using carton.Core.Models;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using Newtonsoft.Json.Serialization;
+using carton.Core.Serialization;
 
 namespace carton.Core.Services;
 
@@ -24,7 +25,6 @@ public class ProfileManager : IProfileManager
 {
     private readonly string _dataPath;
     private readonly IConfigManager _configManager;
-    private readonly JsonSerializerSettings _jsonSettings;
     private readonly SemaphoreSlim _syncLock = new(1, 1);
 
     public ProfileManager(string baseDirectory, IConfigManager configManager)
@@ -32,11 +32,6 @@ public class ProfileManager : IProfileManager
         Directory.CreateDirectory(baseDirectory);
         _dataPath = Path.Combine(baseDirectory, "sing-box-data.json");
         _configManager = configManager;
-        _jsonSettings = new JsonSerializerSettings
-        {
-            Formatting = Formatting.Indented,
-            ContractResolver = new CamelCasePropertyNamesContractResolver()
-        };
     }
 
     public async Task<List<Profile>> ListAsync()
@@ -227,7 +222,9 @@ public class ProfileManager : IProfileManager
         if (File.Exists(_dataPath))
         {
             var json = await File.ReadAllTextAsync(_dataPath);
-            var data = JsonConvert.DeserializeObject<SingBoxData>(json, _jsonSettings) ?? new SingBoxData();
+            var data = JsonSerializer.Deserialize(
+                           json,
+                           CartonCoreJsonContext.Default.SingBoxData) ?? new SingBoxData();
             await EnsureConfigLayoutAsync(data.Profiles);
             await EnsureRuntimeOptionsAsync(data.Profiles);
             return data;
@@ -242,7 +239,22 @@ public class ProfileManager : IProfileManager
 
     private async Task SaveDataUnlockedAsync(SingBoxData data)
     {
-        var json = JsonConvert.SerializeObject(data, _jsonSettings);
+        var buffer = new ArrayBufferWriter<byte>();
+        await using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions { Indented = true }))
+        {
+            JsonSerializer.Serialize(writer, data, CartonCoreJsonContext.Default.SingBoxData);
+            await writer.FlushAsync();
+        }
+
+        var json = Encoding.UTF8.GetString(buffer.WrittenSpan);
+        json = Regex.Unescape(json);
+
+        var directory = Path.GetDirectoryName(_dataPath);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
         await File.WriteAllTextAsync(_dataPath, json);
     }
 
@@ -330,54 +342,46 @@ public class ProfileManager : IProfileManager
                 return null;
             }
 
-            var root = JObject.Parse(configContent);
-            if (root["inbounds"] is not JArray inboundsElement || inboundsElement.Count == 0)
+            using var document = JsonDocument.Parse(configContent);
+            if (!document.RootElement.TryGetProperty("inbounds", out var inboundsElement) ||
+                inboundsElement.ValueKind != JsonValueKind.Array ||
+                inboundsElement.GetArrayLength() == 0)
             {
                 return null;
             }
 
             var hasTun = false;
-            JObject? firstInbound = null;
-            JObject? primaryInbound = null;
+            JsonElement? firstInbound = null;
+            JsonElement? primaryInbound = null;
 
-            foreach (var inbound in inboundsElement)
+            foreach (var inbound in inboundsElement.EnumerateArray())
             {
-                if (inbound is not JObject inboundObject)
+                if (inbound.ValueKind != JsonValueKind.Object)
                 {
                     continue;
                 }
 
-                if (firstInbound == null)
-                {
-                    firstInbound = inboundObject;
-                }
+                firstInbound ??= inbound;
 
-                var type = TryReadString(inboundObject, "type");
+                var type = TryReadString(inbound, "type");
                 if (string.Equals(type, "tun", StringComparison.OrdinalIgnoreCase))
                 {
                     hasTun = true;
                     continue;
                 }
 
-                if (primaryInbound == null)
-                {
-                    primaryInbound = inboundObject;
-                }
+                primaryInbound ??= inbound;
             }
 
-            if (primaryInbound == null)
+            var inboundElement = primaryInbound ?? firstInbound;
+            if (inboundElement is null)
             {
-                if (firstInbound == null)
-                {
-                    return null;
-                }
-
-                primaryInbound = firstInbound;
+                return null;
             }
 
-            var port = TryReadInt(primaryInbound, "listen_port") ?? 2028;
-            var listen = TryReadString(primaryInbound, "listen");
-            var setSystemProxy = TryReadBool(primaryInbound, "set_system_proxy") ?? false;
+            var port = TryReadInt(inboundElement.Value, "listen_port") ?? 2028;
+            var listen = TryReadString(inboundElement.Value, "listen");
+            var setSystemProxy = TryReadBool(inboundElement.Value, "set_system_proxy") ?? false;
 
             return new ProfileRuntimeOptions
             {
@@ -398,35 +402,57 @@ public class ProfileManager : IProfileManager
         }
     }
 
-    private static int? TryReadInt(JObject element, string propertyName)
+    private static int? TryReadInt(JsonElement element, string propertyName)
     {
-        if (element.TryGetValue(propertyName, StringComparison.Ordinal, out var property) &&
-            property.Type is JTokenType.Integer or JTokenType.Float &&
-            int.TryParse(property.ToString(), out var value))
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(propertyName, out var property))
         {
-            return value;
+            return null;
+        }
+
+        if (property.ValueKind == JsonValueKind.Number && property.TryGetInt32(out var number))
+        {
+            return number;
+        }
+
+        if (property.ValueKind == JsonValueKind.Number && property.TryGetInt64(out var longValue))
+        {
+            return (int)longValue;
+        }
+
+        if (property.ValueKind == JsonValueKind.String &&
+            int.TryParse(property.GetString(), out var parsed))
+        {
+            return parsed;
         }
 
         return null;
     }
 
-    private static string? TryReadString(JObject element, string propertyName)
+    private static string? TryReadString(JsonElement element, string propertyName)
     {
-        if (element.TryGetValue(propertyName, StringComparison.Ordinal, out var property) &&
-            property.Type == JTokenType.String)
+        if (element.ValueKind == JsonValueKind.Object &&
+            element.TryGetProperty(propertyName, out var property) &&
+            property.ValueKind == JsonValueKind.String)
         {
-            return property.ToString();
+            return property.GetString();
         }
 
         return null;
     }
 
-    private static bool? TryReadBool(JObject element, string propertyName)
+    private static bool? TryReadBool(JsonElement element, string propertyName)
     {
-        if (element.TryGetValue(propertyName, StringComparison.Ordinal, out var property) &&
-            property.Type == JTokenType.Boolean)
+        if (element.ValueKind == JsonValueKind.Object &&
+            element.TryGetProperty(propertyName, out var property))
         {
-            return property.Value<bool>();
+            return property.ValueKind switch
+            {
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                JsonValueKind.String when bool.TryParse(property.GetString(), out var parsed) => parsed,
+                _ => null
+            };
         }
 
         return null;
@@ -466,9 +492,4 @@ public class ProfileManager : IProfileManager
         return port is >= 1 and <= 65535 ? port : 2028;
     }
 
-    private sealed class SingBoxData
-    {
-        public int SelectedProfileId { get; set; }
-        public List<Profile> Profiles { get; set; } = new();
-    }
 }

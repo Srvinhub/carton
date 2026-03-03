@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
@@ -19,6 +20,10 @@ public interface IAppUpdateService
     string CurrentVersion { get; }
 
     bool IsUpdatePendingRestart { get; }
+
+    bool SupportsInAppUpdates { get; }
+
+    string ReleasesPageUrl { get; }
 
     Task<AppUpdateResult?> CheckForUpdatesAsync(
         string channel,
@@ -67,6 +72,7 @@ public sealed class AppUpdateService : IAppUpdateService
     private readonly HttpClient _httpClient;
     private readonly string _repoOwner;
     private readonly string _repoName;
+    private readonly bool _supportsInAppUpdates;
 
     private VelopackAsset? _stagedRelease;
     private string? _stagedChannel;
@@ -96,9 +102,14 @@ public sealed class AppUpdateService : IAppUpdateService
         }
 
         CurrentVersion = ResolveCurrentVersion() ?? "0.0.0";
+        _supportsInAppUpdates = DetermineSupportsInAppUpdates();
     }
 
     public string CurrentVersion { get; }
+
+    public bool SupportsInAppUpdates => _supportsInAppUpdates;
+
+    public string ReleasesPageUrl => $"{_repositoryUrl}/releases";
 
     public bool IsUpdatePendingRestart
     {
@@ -342,6 +353,39 @@ public sealed class AppUpdateService : IAppUpdateService
     private void Log(string message)
     {
         _log?.Invoke(message);
+    }
+
+    private bool DetermineSupportsInAppUpdates()
+    {
+        try
+        {
+            var locator = _locator.Value;
+            if (locator == null)
+            {
+                return false;
+            }
+
+            if (locator.IsPortable)
+            {
+                return false;
+            }
+
+            if (OperatingSystem.IsWindows())
+            {
+                var updateExePath = locator.UpdateExePath;
+                if (string.IsNullOrWhiteSpace(updateExePath) || !File.Exists(updateExePath))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log($"Failed to determine update capability: {ex.Message}");
+            return false;
+        }
     }
 
     private bool IsRemoteVersionNewer(string remoteVersion)

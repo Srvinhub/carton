@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Net;
 using System.Text;
-using Newtonsoft.Json;
+using System.Text.Json;
+using carton.Core.Models;
+using carton.Core.Serialization;
 
 namespace carton.Core.Services;
 
@@ -113,7 +115,7 @@ public static class WindowsElevatedHelperHost
             })
             : null;
 
-        HelperActionResponse StopSingBox(bool force)
+        WindowsHelperActionResponse StopSingBox(bool force)
         {
             lock (processLock)
             {
@@ -133,7 +135,7 @@ public static class WindowsElevatedHelperHost
                 }
                 catch (Exception ex)
                 {
-                    return new HelperActionResponse { Success = false, Error = ex.Message };
+                    return new WindowsHelperActionResponse { Success = false, Error = ex.Message };
                 }
                 finally
                 {
@@ -147,15 +149,15 @@ public static class WindowsElevatedHelperHost
                     }
                 }
 
-                return new HelperActionResponse { Success = true };
+                return new WindowsHelperActionResponse { Success = true };
             }
         }
 
-        HelperActionResponse StartSingBox(HelperStartRequest request)
+        WindowsHelperActionResponse StartSingBox(WindowsHelperStartRequest request)
         {
             if (!File.Exists(request.SingBoxPath))
             {
-                return new HelperActionResponse
+                return new WindowsHelperActionResponse
                 {
                     Success = false,
                     Error = $"sing-box binary not found: {request.SingBoxPath}"
@@ -164,7 +166,7 @@ public static class WindowsElevatedHelperHost
 
             if (!File.Exists(request.ConfigPath))
             {
-                return new HelperActionResponse
+                return new WindowsHelperActionResponse
                 {
                     Success = false,
                     Error = $"config file not found: {request.ConfigPath}"
@@ -207,18 +209,18 @@ public static class WindowsElevatedHelperHost
 
                     if (process.HasExited)
                     {
-                        return new HelperActionResponse
+                        return new WindowsHelperActionResponse
                         {
                             Success = false,
                             Error = $"sing-box exited with code {process.ExitCode}"
                         };
                     }
 
-                    return new HelperActionResponse { Success = true, Pid = process.Id };
+                    return new WindowsHelperActionResponse { Success = true, Pid = process.Id };
                 }
                 catch (Exception ex)
                 {
-                    return new HelperActionResponse { Success = false, Error = ex.Message };
+                    return new WindowsHelperActionResponse { Success = false, Error = ex.Message };
                 }
             }
         }
@@ -265,13 +267,15 @@ public static class WindowsElevatedHelperHost
                             context.Request.InputStream,
                             context.Request.ContentEncoding ?? Encoding.UTF8);
                         var payload = await reader.ReadToEndAsync();
-                        var request = JsonConvert.DeserializeObject<HelperStartRequest>(payload);
+                        var request = JsonSerializer.Deserialize(
+                            payload,
+                            CartonCoreJsonContext.Default.WindowsHelperStartRequest);
                         if (request == null)
                         {
                             await WriteJsonAsync(
                                 context.Response,
                                 HttpStatusCode.BadRequest,
-                                new HelperActionResponse { Success = false, Error = "invalid payload" });
+                                new WindowsHelperActionResponse { Success = false, Error = "invalid payload" });
                             break;
                         }
 
@@ -373,26 +377,12 @@ public static class WindowsElevatedHelperHost
         await writer.WriteAsync(text);
     }
 
-    private static async Task WriteJsonAsync(HttpListenerResponse response, HttpStatusCode statusCode, object payload)
+    private static async Task WriteJsonAsync(HttpListenerResponse response, HttpStatusCode statusCode, WindowsHelperActionResponse payload)
     {
         response.StatusCode = (int)statusCode;
         response.ContentType = "application/json; charset=utf-8";
-        await using var writer = new StreamWriter(response.OutputStream, Encoding.UTF8, 1024, leaveOpen: false);
-        await writer.WriteAsync(JsonConvert.SerializeObject(payload));
-    }
-
-    private sealed class HelperStartRequest
-    {
-        public string SingBoxPath { get; init; } = string.Empty;
-        public string ConfigPath { get; init; } = string.Empty;
-        public string WorkingDirectory { get; init; } = string.Empty;
-        public string LogPath { get; init; } = string.Empty;
-    }
-
-    private sealed class HelperActionResponse
-    {
-        public bool Success { get; init; }
-        public int? Pid { get; init; }
-        public string? Error { get; init; }
+        await using var writer = new Utf8JsonWriter(response.OutputStream);
+        JsonSerializer.Serialize(writer, payload, CartonCoreJsonContext.Default.WindowsHelperActionResponse);
+        await writer.FlushAsync();
     }
 }

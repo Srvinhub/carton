@@ -8,9 +8,9 @@ using System.Net.WebSockets;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text;
+using System.Text.Json;
 using carton.Core.Models;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+using carton.Core.Serialization;
 
 namespace carton.Core.Services;
 
@@ -244,13 +244,11 @@ public class SingBoxManager : ISingBoxManager, IDisposable
 
     public async Task StopAsync()
     {
+        var hasTargetProcess = true;
         if (_process == null && !_elevatedPid.HasValue)
         {
             _elevatedPid = await TryFindProcessPidByApiPortAsync();
-            if (!_elevatedPid.HasValue)
-            {
-                return;
-            }
+            hasTargetProcess = _elevatedPid.HasValue;
         }
 
         try
@@ -266,12 +264,12 @@ public class SingBoxManager : ISingBoxManager, IDisposable
                 _process.Dispose();
                 _process = null;
             }
-            else if (_elevatedPid.HasValue)
+            else if (hasTargetProcess && _elevatedPid.HasValue)
             {
                 stopped = await StopElevatedAsync();
             }
 
-            if (!stopped)
+            if (!stopped && hasTargetProcess)
             {
                 var error = "Failed to stop sing-box: elevated process is still running";
                 LogReceived?.Invoke(this, $"[ERROR] {error}");
@@ -282,6 +280,11 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             await StopElevatedLogTailAsync();
             _elevatedPid = null;
             _elevatedLogPath = null;
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                TryShutdownWindowsHelperWithoutThrow();
+            }
 
             _state.StartTime = null;
             UpdateStatus(ServiceStatus.Stopped);
@@ -328,31 +331,36 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         try
         {
             var response = await _httpClient.GetStringAsync($"{_apiAddress}/proxies");
-            var json = JObject.Parse(response);
+            using var document = JsonDocument.Parse(response);
             var groups = new List<OutboundGroup>();
 
-            if (json["proxies"] is JObject proxies)
+            if (document.RootElement.TryGetProperty("proxies", out var proxiesElement) &&
+                proxiesElement.ValueKind == JsonValueKind.Object)
             {
-                foreach (var prop in proxies.Properties())
+                foreach (var proxyProperty in proxiesElement.EnumerateObject())
                 {
-                    if (prop.Value is not JObject proxy)
+                    if (proxyProperty.Value.ValueKind != JsonValueKind.Object)
                     {
                         continue;
                     }
 
+                    var proxy = proxyProperty.Value;
                     var group = new OutboundGroup
                     {
-                        Tag = prop.Name,
-                        Type = proxy.Value<string>("type") ?? string.Empty,
-                        Selected = proxy.Value<string>("now") ?? string.Empty
+                        Tag = proxyProperty.Name,
+                        Type = ReadString(proxy, "type"),
+                        Selected = ReadString(proxy, "now")
                     };
 
-                    if (proxy["all"] is JArray all)
+                    if (proxy.TryGetProperty("all", out var allElement) &&
+                        allElement.ValueKind == JsonValueKind.Array)
                     {
-                        foreach (var item in all)
+                        foreach (var item in allElement.EnumerateArray())
                         {
-                            var itemStr = item.Value<string>() ?? string.Empty;
-                            group.Items.Add(new OutboundItem { Tag = itemStr });
+                            if (item.ValueKind == JsonValueKind.String)
+                            {
+                                group.Items.Add(new OutboundItem { Tag = item.GetString() ?? string.Empty });
+                            }
                         }
                     }
 
@@ -372,11 +380,11 @@ public class SingBoxManager : ISingBoxManager, IDisposable
     {
         try
         {
-            var content = new StringContent(
-                JsonConvert.SerializeObject(new { name = outboundTag }),
-                Encoding.UTF8,
-                "application/json"
-            );
+            var request = new OutboundSelectionRequest { Name = outboundTag };
+            var payload = JsonSerializer.Serialize(
+                request,
+                CartonCoreJsonContext.Default.OutboundSelectionRequest);
+            var content = new StringContent(payload, Encoding.UTF8, "application/json");
             await _httpClient.PutAsync($"{_apiAddress}/proxies/{Uri.EscapeDataString(groupTag)}", content);
         }
         catch
@@ -402,30 +410,32 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             }
 
             try
-            {
-                var endpoint = $"{_apiAddress}/proxies/{Uri.EscapeDataString(tag)}/delay?timeout={timeoutMs}&url={urlParam}";
-                using var response = await _httpClient.GetAsync(endpoint);
-                if (!response.IsSuccessStatusCode)
                 {
-                    result[tag] = -1;
-                    continue;
-                }
+                    var endpoint = $"{_apiAddress}/proxies/{Uri.EscapeDataString(tag)}/delay?timeout={timeoutMs}&url={urlParam}";
+                    using var response = await _httpClient.GetAsync(endpoint);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        result[tag] = -1;
+                        continue;
+                    }
 
-                var payload = await response.Content.ReadAsStringAsync();
-                var json = JObject.Parse(payload);
-                if (json["delay"] != null && int.TryParse(json["delay"]!.ToString(), out var delay))
-                {
-                    result[tag] = delay;
+                    var payload = await response.Content.ReadAsStringAsync();
+                    using var document = JsonDocument.Parse(payload);
+                    if (document.RootElement.TryGetProperty("delay", out var delayElement) &&
+                        delayElement.ValueKind == JsonValueKind.Number &&
+                        delayElement.TryGetInt32(out var delay))
+                    {
+                        result[tag] = delay;
+                    }
+                    else
+                    {
+                        result[tag] = -1;
+                    }
                 }
-                else
+                catch
                 {
                     result[tag] = -1;
                 }
-            }
-            catch
-            {
-                result[tag] = -1;
-            }
         }
 
         return result;
@@ -435,34 +445,46 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         try
         {
             var response = await _httpClient.GetStringAsync($"{_apiAddress}/connections");
-            var json = JObject.Parse(response);
             var connections = new List<ConnectionInfo>();
+            using var document = JsonDocument.Parse(response);
 
-            if (json["connections"] is not JArray conns)
+            if (!document.RootElement.TryGetProperty("connections", out var connectionsElement) ||
+                connectionsElement.ValueKind != JsonValueKind.Array)
             {
                 return connections;
             }
 
-            foreach (var conn in conns.OfType<JObject>())
+            foreach (var conn in connectionsElement.EnumerateArray())
             {
-                var metadata = conn["metadata"] as JObject;
-                var chains = conn["chains"];
+                if (conn.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                var metadata = conn.TryGetProperty("metadata", out var metadataElement) &&
+                               metadataElement.ValueKind == JsonValueKind.Object
+                    ? metadataElement
+                    : default;
+                var hasMetadata = metadata.ValueKind == JsonValueKind.Object;
+
+                var chains = conn.TryGetProperty("chains", out var chainsElement) ? chainsElement : default;
+
+                var sourceIp = hasMetadata ? ReadString(metadata, "sourceIP") : string.Empty;
+                var sourcePort = hasMetadata ? ReadString(metadata, "sourcePort") : string.Empty;
+                var destinationIp = hasMetadata ? ReadString(metadata, "destinationIP") : string.Empty;
+                var destinationPort = hasMetadata ? ReadString(metadata, "destinationPort") : string.Empty;
+                var host = hasMetadata ? ReadString(metadata, "host") : string.Empty;
 
                 connections.Add(new ConnectionInfo
                 {
                     Id = ReadString(conn, "id"),
                     StartTime = ReadDateTime(conn, "start"),
                     Inbound = ReadString(conn, "inbound"),
-                    Process = ReadString(metadata, "process"),
-                    Ip = ReadString(metadata, "sourceIP"),
-                    Source = ComposeEndpoint(
-                        ReadString(metadata, "sourceIP"),
-                        ReadString(metadata, "sourcePort")),
-                    Destination = ComposeDestination(
-                        ReadString(metadata, "host"),
-                        ReadString(metadata, "destinationIP"),
-                        ReadString(metadata, "destinationPort")),
-                    Domain = ReadString(metadata, "host"),
+                    Process = hasMetadata ? ReadString(metadata, "process") : string.Empty,
+                    Ip = sourceIp,
+                    Source = ComposeEndpoint(sourceIp, sourcePort),
+                    Destination = ComposeDestination(host, destinationIp, destinationPort),
+                    Domain = host,
                     Protocol = ResolveProtocol(conn, metadata),
                     Outbound = ResolveOutbound(conn, chains),
                     Upload = ReadInt64(conn, "upload"),
@@ -489,13 +511,13 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         }
     }
 
-    private static string ResolveProtocol(JObject connection, JObject? metadata)
+    private static string ResolveProtocol(JsonElement connection, JsonElement metadata)
     {
         var protocol = ReadString(connection, "protocol");
         return string.IsNullOrWhiteSpace(protocol) ? ReadString(metadata, "network") : protocol;
     }
 
-    private static string ResolveOutbound(JObject connection, JToken? chains)
+    private static string ResolveOutbound(JsonElement connection, JsonElement chains)
     {
         var outbound = ReadString(connection, "outbound");
         if (!string.IsNullOrWhiteSpace(outbound))
@@ -503,12 +525,17 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             return outbound;
         }
 
-        if (chains is JArray chainArray)
+        if (chains.ValueKind == JsonValueKind.Array)
         {
             var tags = new List<string>();
-            foreach (var chain in chainArray)
+            foreach (var chain in chains.EnumerateArray())
             {
-                var tag = chain.Value<string>();
+                if (chain.ValueKind != JsonValueKind.String)
+                {
+                    continue;
+                }
+
+                var tag = chain.GetString();
                 if (!string.IsNullOrWhiteSpace(tag))
                 {
                     tags.Add(tag);
@@ -545,57 +572,64 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         return string.IsNullOrWhiteSpace(port) ? target : $"{target}:{port}";
     }
 
-    private static string ReadString(JObject? element, string propertyName)
+    private static string ReadString(JsonElement element, string propertyName)
     {
-        if (element == null)
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(propertyName, out var property))
         {
             return string.Empty;
         }
 
-        return element.TryGetValue(propertyName, StringComparison.Ordinal, out var property) && property.Type != JTokenType.Null
-            ? property.Value<string>() ?? string.Empty
+        return property.ValueKind == JsonValueKind.String
+            ? property.GetString() ?? string.Empty
             : string.Empty;
     }
 
-    private static long ReadInt64(JObject? element, string propertyName)
+    private static long ReadInt64(JsonElement element, string propertyName)
     {
-        if (element == null)
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(propertyName, out var property))
         {
             return 0;
         }
 
-        if (!element.TryGetValue(propertyName, StringComparison.Ordinal, out var property))
-        {
-            return 0;
-        }
-
-        if (property.Type is JTokenType.Integer or JTokenType.Float &&
-            long.TryParse(property.ToString(), out var integerValue))
+        if (property.ValueKind == JsonValueKind.Number && property.TryGetInt64(out var integerValue))
         {
             return integerValue;
         }
 
-        return property.Type is JTokenType.Integer or JTokenType.Float &&
-               double.TryParse(property.ToString(), out var floatingValue)
-            ? (long)floatingValue
-            : 0;
-    }
-
-    private static DateTime ReadDateTime(JObject? element, string propertyName)
-    {
-        if (element != null &&
-            element.TryGetValue(propertyName, StringComparison.Ordinal, out var property) &&
-            property.Type == JTokenType.Date)
+        if (property.ValueKind == JsonValueKind.Number && property.TryGetDouble(out var floatingValue))
         {
-            return property.Value<DateTime>();
+            return (long)floatingValue;
         }
 
-        if (element != null &&
-            element.TryGetValue(propertyName, StringComparison.Ordinal, out property) &&
-            property.Type == JTokenType.String &&
-            DateTime.TryParse(property.ToString(), out var timestamp))
+        if (property.ValueKind == JsonValueKind.String &&
+            long.TryParse(property.GetString(), out var parsedValue))
+        {
+            return parsedValue;
+        }
+
+        return 0;
+    }
+
+    private static DateTime ReadDateTime(JsonElement element, string propertyName)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(propertyName, out var property))
+        {
+            return DateTime.Now;
+        }
+
+        if (property.ValueKind == JsonValueKind.String &&
+            DateTime.TryParse(property.GetString(), out var timestamp))
         {
             return timestamp;
+        }
+
+        if (property.ValueKind == JsonValueKind.Number &&
+            property.TryGetInt64(out var unixMilliseconds))
+        {
+            return DateTimeOffset.FromUnixTimeMilliseconds(unixMilliseconds).LocalDateTime;
         }
 
         return DateTime.Now;
@@ -771,7 +805,8 @@ public class SingBoxManager : ISingBoxManager, IDisposable
 
         try
         {
-            var root = JObject.Parse(payload);
+            using var document = JsonDocument.Parse(payload);
+            var root = document.RootElement;
             var uplink = ReadTrafficValue(root, "uplink", "up", "upload");
             var downlink = ReadTrafficValue(root, "downlink", "down", "download");
             return new TrafficInfo
@@ -787,16 +822,17 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         }
     }
 
-    private static long ReadTrafficValue(JObject root, params string[] propertyNames)
+    private static long ReadTrafficValue(JsonElement root, params string[] propertyNames)
     {
         if (TryReadTrafficValue(root, propertyNames, out var value))
         {
             return value;
         }
 
-        if (root.TryGetValue("now", StringComparison.Ordinal, out var nowElement) &&
-            nowElement is JObject nowObject &&
-            TryReadTrafficValue(nowObject, propertyNames, out value))
+        if (root.ValueKind == JsonValueKind.Object &&
+            root.TryGetProperty("now", out var nowElement) &&
+            nowElement.ValueKind == JsonValueKind.Object &&
+            TryReadTrafficValue(nowElement, propertyNames, out value))
         {
             return value;
         }
@@ -818,9 +854,9 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         }
     }
 
-    private static bool TryReadTrafficValue(JToken element, IReadOnlyList<string> propertyNames, out long value)
+    private static bool TryReadTrafficValue(JsonElement element, IReadOnlyList<string> propertyNames, out long value)
     {
-        if (element is not JObject obj)
+        if (element.ValueKind != JsonValueKind.Object)
         {
             value = 0;
             return false;
@@ -828,22 +864,22 @@ public class SingBoxManager : ISingBoxManager, IDisposable
 
         foreach (var name in propertyNames)
         {
-            if (!obj.TryGetValue(name, StringComparison.Ordinal, out var property) ||
-                property.Type is not (JTokenType.Integer or JTokenType.Float))
+            if (!element.TryGetProperty(name, out var property))
             {
                 continue;
             }
 
-            if (long.TryParse(property.ToString(), out var result))
+            switch (property.ValueKind)
             {
-                value = result;
-                return true;
-            }
-
-            if (double.TryParse(property.ToString(), out var floating))
-            {
-                value = (long)floating;
-                return true;
+                case JsonValueKind.Number when property.TryGetInt64(out var longValue):
+                    value = longValue;
+                    return true;
+                case JsonValueKind.Number when property.TryGetDouble(out var doubleValue):
+                    value = (long)doubleValue;
+                    return true;
+                case JsonValueKind.String when long.TryParse(property.GetString(), out var parsed):
+                    value = parsed;
+                    return true;
             }
         }
 
@@ -907,15 +943,21 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         try
         {
             var content = File.ReadAllText(configPath);
-            var document = JObject.Parse(content);
-            if (document["inbounds"] is not JArray inbounds)
+            using var document = JsonDocument.Parse(content);
+            if (!document.RootElement.TryGetProperty("inbounds", out var inbounds) ||
+                inbounds.ValueKind != JsonValueKind.Array)
             {
                 return false;
             }
 
-            foreach (var inbound in inbounds.OfType<JObject>())
+            foreach (var inbound in inbounds.EnumerateArray())
             {
-                if (string.Equals(inbound.Value<string>("type"), "tun", StringComparison.OrdinalIgnoreCase))
+                if (inbound.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                if (string.Equals(ReadString(inbound, "type"), "tun", StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
                 }
@@ -1523,7 +1565,9 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             using var message = new HttpRequestMessage(HttpMethod.Post, GetWindowsHelperUri("start"))
             {
                 Content = new StringContent(
-                    JsonConvert.SerializeObject(request),
+                    JsonSerializer.Serialize(
+                        request,
+                        CartonCoreJsonContext.Default.WindowsHelperStartRequest),
                     Encoding.UTF8,
                     "application/json")
             };
@@ -1545,7 +1589,9 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             WindowsHelperActionResponse? result = null;
             try
             {
-                result = JsonConvert.DeserializeObject<WindowsHelperActionResponse>(payload);
+                result = JsonSerializer.Deserialize(
+                    payload,
+                    CartonCoreJsonContext.Default.WindowsHelperActionResponse);
             }
             catch
             {
@@ -1728,7 +1774,9 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             WindowsHelperActionResponse? result = null;
             try
             {
-                result = JsonConvert.DeserializeObject<WindowsHelperActionResponse>(payload);
+                result = JsonSerializer.Deserialize(
+                    payload,
+                    CartonCoreJsonContext.Default.WindowsHelperActionResponse);
             }
             catch
             {
@@ -1744,31 +1792,50 @@ public class SingBoxManager : ISingBoxManager, IDisposable
 
     private async Task TryShutdownWindowsElevatedHelperAsync()
     {
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ||
-            string.IsNullOrWhiteSpace(_windowsElevatedHelperToken))
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             return;
         }
 
         var shutdownSucceeded = false;
-        try
+        var token = _windowsElevatedHelperToken;
+        if (!string.IsNullOrWhiteSpace(token))
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            using var message = new HttpRequestMessage(HttpMethod.Post, GetWindowsHelperUri("shutdown"));
-            message.Headers.Add(WindowsElevatedHelperTokenHeader, _windowsElevatedHelperToken);
-            using var response = await _httpClient.SendAsync(message, cts.Token);
-            shutdownSucceeded = response.IsSuccessStatusCode;
-        }
-        catch
-        {
-        }
-        finally
-        {
-            if (shutdownSucceeded)
+            try
             {
-                _windowsElevatedHelperToken = null;
-                _windowsElevatedHelperPid = null;
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                using var message = new HttpRequestMessage(HttpMethod.Post, GetWindowsHelperUri("shutdown"));
+                message.Headers.Add(WindowsElevatedHelperTokenHeader, token);
+                using var response = await _httpClient.SendAsync(message, cts.Token);
+                shutdownSucceeded = response.IsSuccessStatusCode;
             }
+            catch
+            {
+            }
+        }
+
+        if (!shutdownSucceeded && _windowsElevatedHelperPid.HasValue)
+        {
+            try
+            {
+                using var process = Process.GetProcessById(_windowsElevatedHelperPid.Value);
+                if (!process.HasExited)
+                {
+                    process.Kill(true);
+                    process.WaitForExit(2000);
+                }
+
+                shutdownSucceeded = true;
+            }
+            catch
+            {
+            }
+        }
+
+        if (shutdownSucceeded)
+        {
+            _windowsElevatedHelperToken = null;
+            _windowsElevatedHelperPid = null;
         }
     }
 
@@ -2031,21 +2098,6 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         {
             return false;
         }
-    }
-
-    private sealed class WindowsHelperStartRequest
-    {
-        public string SingBoxPath { get; init; } = string.Empty;
-        public string ConfigPath { get; init; } = string.Empty;
-        public string WorkingDirectory { get; init; } = string.Empty;
-        public string LogPath { get; init; } = string.Empty;
-    }
-
-    private sealed class WindowsHelperActionResponse
-    {
-        public bool Success { get; init; }
-        public int? Pid { get; init; }
-        public string? Error { get; init; }
     }
 
     private sealed class ElevatedStartResult

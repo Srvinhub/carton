@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using carton.Core.Services;
@@ -29,6 +30,7 @@ public partial class SettingsViewModel : PageViewModelBase
     private readonly IAppUpdateService? _appUpdateService;
     private AppUpdateResult? _pendingAppUpdate;
     private GitHubReleaseInfo? _latestReleaseInfo;
+    private bool _requiresManualAppUpdate;
     private AppPreferences _currentPreferences = new();
     private bool _suppressPreferenceUpdates;
 
@@ -41,7 +43,7 @@ public partial class SettingsViewModel : PageViewModelBase
     private bool _autoStartOnLaunch;
 
     [ObservableProperty]
-    private string _selectedTheme = "System";
+    private AppTheme _selectedTheme = AppTheme.System;
 
     [ObservableProperty]
     private string _selectedUpdateChannel = "release";
@@ -59,7 +61,7 @@ public partial class SettingsViewModel : PageViewModelBase
     }
 
     partial void OnAutoStartOnLaunchChanged(bool value) => UpdatePreference(p => p.AutoStartOnLaunch = value);
-    partial void OnSelectedThemeChanged(string value) => OnThemeChanged(value);
+    partial void OnSelectedThemeChanged(AppTheme value) => OnThemeChanged(value);
     partial void OnSelectedLanguageChanged(LanguageOptionViewModel? value) => OnLanguageOptionChanged(value);
     partial void OnSelectedUpdateChannelChanged(string value) => OnUpdateChannelChanged(value);
     partial void OnAutoCheckAppUpdatesChanged(bool value) => UpdatePreference(p => p.AutoCheckAppUpdates = value);
@@ -121,52 +123,52 @@ public partial class SettingsViewModel : PageViewModelBase
     [ObservableProperty]
     private string _currentAppVersion = string.Empty;
 
-    public ObservableCollection<string> Themes { get; } = new() { "System", "Light", "Dark" };
+    public ObservableCollection<AppTheme> Themes { get; } = new(Enum.GetValues<AppTheme>());
     public ObservableCollection<LanguageOptionViewModel> Languages { get; } = new();
     public ObservableCollection<UpdateChannelOptionViewModel> UpdateChannels { get; } = new();
 
-public SettingsViewModel()
-{
-    Title = "Settings";
-    Icon = "Settings";
-    InitializeUpdateChannels();
-}
-
-public SettingsViewModel(
-    IConfigManager configManager,
-    IProfileManager profileManager,
-    IKernelManager kernelManager,
-    IPreferencesService preferencesService,
-    ILocalizationService localizationService,
-    IThemeService themeService,
-    IStartupService startupService,
-    IAppUpdateService appUpdateService) : this()
-{
-    _configManager = configManager;
-    _profileManager = profileManager;
-    _kernelManager = kernelManager;
-    _preferencesService = preferencesService;
-    _localizationService = localizationService;
-    _themeService = themeService;
-    _startupService = startupService;
-    _appUpdateService = appUpdateService;
-    
-    _kernelManager.DownloadProgressChanged += OnDownloadProgress;
-    _kernelManager.StatusChanged += OnKernelStatusChanged;
-    InitializeLanguages();
-    InitializeUpdateChannels();
-    UpdateLocalizedTexts();
-    if (_localizationService != null)
+    public SettingsViewModel()
     {
-        _localizationService.LanguageChanged += (_, _) => UpdateLocalizedTexts();
+        Title = "Settings";
+        Icon = "Settings";
+        InitializeUpdateChannels();
     }
-    
-    _ = InitializeAsync();
-}
+
+    public SettingsViewModel(
+        IConfigManager configManager,
+        IProfileManager profileManager,
+        IKernelManager kernelManager,
+        IPreferencesService preferencesService,
+        ILocalizationService localizationService,
+        IThemeService themeService,
+        IStartupService startupService,
+        IAppUpdateService appUpdateService) : this()
+    {
+        _configManager = configManager;
+        _profileManager = profileManager;
+        _kernelManager = kernelManager;
+        _preferencesService = preferencesService;
+        _localizationService = localizationService;
+        _themeService = themeService;
+        _startupService = startupService;
+        _appUpdateService = appUpdateService;
+
+        _kernelManager.DownloadProgressChanged += OnDownloadProgress;
+        _kernelManager.StatusChanged += OnKernelStatusChanged;
+        InitializeLanguages();
+        InitializeUpdateChannels();
+        UpdateLocalizedTexts();
+        if (_localizationService != null)
+        {
+            _localizationService.LanguageChanged += (_, _) => UpdateLocalizedTexts();
+        }
+
+        _ = InitializeAsync();
+    }
 
     private async Task InitializeAsync()
     {
-        await LoadPreferencesAsync();
+        LoadPreferences();
         await LoadProfilesAsync();
         await RefreshKernelInfoAsync();
         InitializeAppUpdateState();
@@ -214,6 +216,7 @@ public SettingsViewModel(
     private void InitializeAppUpdateState()
     {
         CurrentAppVersion = _appUpdateService?.CurrentVersion ?? GetString("Common.Unknown", "unknown");
+        _requiresManualAppUpdate = _appUpdateService != null && !_appUpdateService.SupportsInAppUpdates;
         LatestAvailableVersion = string.Empty;
         AppUpdateStatus = string.Empty;
         SelectedUpdateChannel = UpdateChannelToString(_currentPreferences.UpdateChannel);
@@ -236,21 +239,20 @@ public SettingsViewModel(
         RefreshUpdateChannelDisplayNames();
     }
 
-    private async Task LoadPreferencesAsync()
+    private void LoadPreferences()
     {
         if (_preferencesService == null)
         {
             return;
         }
 
-        var preferences = await _preferencesService.LoadAsync();
+        var preferences = _preferencesService.Load();
         _currentPreferences = preferences ?? new AppPreferences();
 
         _suppressPreferenceUpdates = true;
         StartAtLogin = _currentPreferences.StartAtLogin;
         AutoStartOnLaunch = _currentPreferences.AutoStartOnLaunch;
-        var theme = NormalizeThemeName(_currentPreferences.Theme);
-        SelectedTheme = theme;
+        SelectedTheme = _currentPreferences.Theme;
         SelectedLanguage = Languages.FirstOrDefault(l => l.Language == _currentPreferences.Language) ?? Languages.FirstOrDefault();
         SelectedUpdateChannel = UpdateChannelToString(_currentPreferences.UpdateChannel);
         AutoCheckAppUpdates = _currentPreferences.AutoCheckAppUpdates;
@@ -282,7 +284,7 @@ public SettingsViewModel(
 
         var kernelInfo = await _kernelManager.GetInstalledKernelInfoAsync();
         IsKernelInstalled = kernelInfo != null;
-        
+
         if (kernelInfo != null)
         {
             KernelVersion = kernelInfo.KernelVersion;
@@ -461,7 +463,7 @@ public SettingsViewModel(
     }
 
     [RelayCommand]
-    private async Task ResetSettings()
+    private Task ResetSettings()
     {
         _currentPreferences = new AppPreferences();
         _suppressPreferenceUpdates = true;
@@ -473,7 +475,8 @@ public SettingsViewModel(
         AutoCheckAppUpdates = _currentPreferences.AutoCheckAppUpdates;
         _suppressPreferenceUpdates = false;
         _localizationService?.SetLanguage(_currentPreferences.Language);
-        await PersistPreferencesAsync();
+        PersistPreferences();
+        return Task.CompletedTask;
     }
 
     [RelayCommand]
@@ -518,7 +521,15 @@ public SettingsViewModel(
             IsAppUpdateAvailable = true;
             IsAppUpdateReadyToInstall = false;
             AppUpdateProgress = 0;
-            AppUpdateStatus = GetString("Settings.Update.Status.Available", "New version available");
+            if (_requiresManualAppUpdate)
+            {
+                AppUpdateStatus = GetString("Settings.Update.Status.ManualRequired", "New version available. Download it from the releases page.");
+                await ShowManualUpdatePromptAsync();
+            }
+            else
+            {
+                AppUpdateStatus = GetString("Settings.Update.Status.Available", "New version available");
+            }
         }
         catch (Exception ex)
         {
@@ -539,6 +550,13 @@ public SettingsViewModel(
         if (_appUpdateService == null)
         {
             AppUpdateStatus = GetString("Settings.Update.Status.Unsupported", "Update service unavailable");
+            return;
+        }
+
+        if (_requiresManualAppUpdate)
+        {
+            AppUpdateStatus = GetString("Settings.Update.Status.ManualRequired", "New version available. Download it from the releases page.");
+            await ShowManualUpdatePromptAsync();
             return;
         }
 
@@ -587,6 +605,13 @@ public SettingsViewModel(
             return;
         }
 
+        if (_requiresManualAppUpdate)
+        {
+            AppUpdateStatus = GetString("Settings.Update.Status.ManualRequired", "New version available. Download it from the releases page.");
+            await ShowManualUpdatePromptAsync();
+            return;
+        }
+
         if (!IsAppUpdateReadyToInstall)
         {
             AppUpdateStatus = GetString("Settings.Update.Status.DownloadFirst", "Download the update first.");
@@ -614,7 +639,7 @@ public SettingsViewModel(
                 Name = $"Profile {Profiles.Count + 1}",
                 Type = Core.Models.ProfileType.Local
             });
-            
+
             Profiles.Add(new ProfileViewModel
             {
                 Id = profile.Id,
@@ -644,18 +669,17 @@ public SettingsViewModel(
             return;
         }
 
-        _ = PersistPreferencesAsync();
+        PersistPreferences();
     }
 
-    private Task PersistPreferencesAsync()
+    private void PersistPreferences()
     {
         if (_preferencesService == null)
         {
-            return Task.CompletedTask;
+            return;
         }
 
-        var snapshot = CopyPreferences(_currentPreferences);
-        return _preferencesService.SaveAsync(snapshot);
+        _preferencesService.Save(_currentPreferences);
     }
 
     private void OnLanguageOptionChanged(LanguageOptionViewModel? value)
@@ -688,11 +712,16 @@ public SettingsViewModel(
         UpdatePreference(p => p.UpdateChannel = parsed);
     }
 
-    private void OnThemeChanged(string value)
+    private void OnThemeChanged(AppTheme value)
     {
-        var normalized = NormalizeThemeName(value);
-        _themeService?.ApplyTheme(normalized);
-        UpdatePreference(p => p.Theme = _themeService?.CurrentTheme ?? normalized);
+        var appliedTheme = value;
+        if (_themeService != null)
+        {
+            _themeService.ApplyTheme(value);
+            appliedTheme = _themeService.CurrentTheme;
+        }
+
+        UpdatePreference(p => p.Theme = appliedTheme);
     }
 
     private string GetString(string key, string fallback)
@@ -711,21 +740,6 @@ public SettingsViewModel(
         return string.Equals(channel, "beta", StringComparison.OrdinalIgnoreCase)
             ? GetString("Settings.Update.Channel.BetaLabel", "Beta (preview)")
             : GetString("Settings.Update.Channel.ReleaseLabel", "Release (stable)");
-    }
-
-    private static string NormalizeThemeName(string? theme)
-    {
-        if (string.IsNullOrWhiteSpace(theme))
-        {
-            return "System";
-        }
-
-        return theme.Trim() switch
-        {
-            var value when value.Equals("Dark", StringComparison.OrdinalIgnoreCase) => "Dark",
-            var value when value.Equals("Light", StringComparison.OrdinalIgnoreCase) => "Light",
-            _ => "System"
-        };
     }
 
     private static string NormalizeUpdateChannel(string? channel)
@@ -747,19 +761,6 @@ public SettingsViewModel(
 
     private static string UpdateChannelToString(AppUpdateChannel channel)
         => channel == AppUpdateChannel.Beta ? "beta" : "release";
-
-    private static AppPreferences CopyPreferences(AppPreferences preferences)
-    {
-        return new AppPreferences
-        {
-            StartAtLogin = preferences.StartAtLogin,
-            AutoStartOnLaunch = preferences.AutoStartOnLaunch,
-            Theme = preferences.Theme,
-            Language = preferences.Language,
-            UpdateChannel = preferences.UpdateChannel,
-            AutoCheckAppUpdates = preferences.AutoCheckAppUpdates
-        };
-    }
 
     private async Task ExportBackupAsync(string zipPath)
     {
@@ -981,13 +982,117 @@ public SettingsViewModel(
         desktop.Shutdown();
     }
 
+    private async Task ShowManualUpdatePromptAsync()
+    {
+        if (_appUpdateService == null)
+        {
+            return;
+        }
+
+        var releaseUrl = _appUpdateService.ReleasesPageUrl;
+        if (string.IsNullOrWhiteSpace(releaseUrl))
+        {
+            return;
+        }
+
+        if (Avalonia.Application.Current?.ApplicationLifetime is not Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop ||
+            desktop.MainWindow == null)
+        {
+            OpenReleasesPage(releaseUrl);
+            return;
+        }
+
+        var owner = desktop.MainWindow;
+        var versionLabel = string.IsNullOrWhiteSpace(LatestAvailableVersion)
+            ? GetString("Common.Unknown", "unknown")
+            : LatestAvailableVersion;
+
+        var dialog = new Window
+        {
+            Width = 480,
+            Height = 220,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Title = GetString("Settings.Update.ManualDialog.Title", "Manual update required")
+        };
+
+        var message = new TextBlock
+        {
+            Text = string.Format(
+                GetString(
+                    "Settings.Update.ManualDialog.Message",
+                    "Portable builds cannot update automatically. Open the releases page to download version {0}?"),
+                versionLabel),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 16)
+        };
+
+        var openButton = new Button
+        {
+            Content = GetString("Settings.Update.ManualDialog.OpenButton", "Open Releases"),
+            MinWidth = 120
+        };
+        openButton.Click += (_, _) => dialog.Close(true);
+
+        var laterButton = new Button
+        {
+            Content = GetString("Settings.Update.ManualDialog.LaterButton", "Later"),
+            MinWidth = 90
+        };
+        laterButton.Click += (_, _) => dialog.Close(false);
+
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Spacing = 8,
+            Children =
+            {
+                laterButton,
+                openButton
+            }
+        };
+
+        dialog.Content = new StackPanel
+        {
+            Margin = new Thickness(20),
+            Children =
+            {
+                message,
+                buttons
+            }
+        };
+
+        var shouldOpen = await dialog.ShowDialog<bool>(owner);
+        if (shouldOpen)
+        {
+            OpenReleasesPage(releaseUrl);
+        }
+    }
+
+    private void OpenReleasesPage(string releaseUrl)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = releaseUrl,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            AppUpdateStatus = $"{GetString("Settings.Update.Status.OpenReleasesFailed", "Failed to open releases page")}: {ex.Message}";
+        }
+    }
+
     private async Task LoadProfilesAsync()
     {
         if (_profileManager == null) return;
 
         var profiles = await _profileManager.ListAsync();
         var selectedId = await _profileManager.GetSelectedProfileIdAsync();
-        
+
         Profiles.Clear();
         foreach (var profile in profiles)
         {
@@ -999,7 +1104,7 @@ public SettingsViewModel(
                 LastUpdated = profile.LastUpdated?.ToString("yyyy-MM-dd HH:mm") ?? ""
             };
             Profiles.Add(vm);
-            
+
             if (profile.Id == selectedId)
             {
                 SelectedProfile = vm;

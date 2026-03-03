@@ -1,8 +1,8 @@
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using carton.Core.Models;
-using Newtonsoft.Json.Linq;
 
 namespace carton.Core.Services;
 
@@ -134,8 +134,14 @@ public class KernelManager : IKernelManager
         try
         {
             var response = await _httpClient.GetStringAsync(GitHubApiUrl);
-            var json = JObject.Parse(response);
-            return json.Value<string>("tag_name");
+            using var document = JsonDocument.Parse(response);
+            if (document.RootElement.TryGetProperty("tag_name", out var tagElement) &&
+                tagElement.ValueKind == JsonValueKind.String)
+            {
+                return tagElement.GetString();
+            }
+
+            return null;
         }
         catch
         {

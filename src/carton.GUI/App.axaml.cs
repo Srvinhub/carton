@@ -1,29 +1,35 @@
-using System;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Data.Core;
 using Avalonia.Data.Core.Plugins;
-using System.Linq;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
-using Avalonia.Controls;
-using carton.GUI.Models;
 using carton.Core.Models;
+using carton.Core.Services;
+using carton.GUI.Models;
 using carton.GUI.Services;
 using carton.ViewModels;
 using carton.Views;
+using System;
+using System.IO;
+using System.Linq;
 
 namespace carton;
 
 public partial class App : Application
 {
     private TrayMenuService? _trayMenuService;
+    private static IPreferencesService? _preferencesService;
+
+    public static IPreferencesService PreferencesService =>
+        _preferencesService ?? throw new InvalidOperationException("Preferences service has not been initialized.");
 
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
-        LocalizationService.Instance.Initialize(AppLanguageHelper.GetSystemDefaultLanguage());
-        ThemeService.Instance.Initialize("System");
+        var preferences = LoadOrCreatePreferences();
+        LocalizationService.Instance.Initialize(preferences.Language);
+        ThemeService.Instance.Initialize(preferences.Theme);
     }
 
     public override void OnFrameworkInitializationCompleted()
@@ -31,7 +37,7 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             DisableAvaloniaDataAnnotationValidation();
-            
+
             var viewModel = new MainViewModel();
             var mainWindow = new MainWindow
             {
@@ -62,6 +68,10 @@ public partial class App : Application
         {
             viewModel.ShutdownAsync().GetAwaiter().GetResult();
         }
+
+        SingleInstanceService.Dispose();
+
+        Environment.Exit(0);
     }
 
     private void DisableAvaloniaDataAnnotationValidation()
@@ -73,6 +83,27 @@ public partial class App : Application
         {
             BindingPlugins.DataValidators.Remove(plugin);
         }
+    }
+
+    private static AppPreferences LoadOrCreatePreferences()
+    {
+        if (_preferencesService == null)
+        {
+            var workingDirectory = ResolveWorkingDirectory();
+            _preferencesService = new PreferencesService(workingDirectory);
+        }
+
+        return _preferencesService.Load();
+    }
+
+    private static string ResolveWorkingDirectory()
+    {
+        var appDataPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Carton");
+        var workingDirectory = Path.Combine(appDataPath, "data");
+        Directory.CreateDirectory(workingDirectory);
+        return workingDirectory;
     }
 }
 

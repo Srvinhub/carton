@@ -1,72 +1,117 @@
-using System.Threading;
+using System;
+using System.IO;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 using carton.Core.Models;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
-using Newtonsoft.Json.Serialization;
+using carton.Core.Serialization;
 
 namespace carton.Core.Services;
 
 public interface IPreferencesService
 {
-    Task<AppPreferences> LoadAsync();
-    Task SaveAsync(AppPreferences preferences);
+    AppPreferences Load();
+    void Save(AppPreferences preferences);
 }
 
 public class PreferencesService : IPreferencesService
 {
     private readonly string _preferencesPath;
-    private readonly JsonSerializerSettings _jsonSettings;
-    private readonly SemaphoreSlim _syncLock = new(1, 1);
+    private readonly object _syncLock = new();
+    private AppPreferences? _cachedPreferences;
 
     public PreferencesService(string baseDirectory)
     {
         Directory.CreateDirectory(baseDirectory);
         _preferencesPath = Path.Combine(baseDirectory, "preferences.json");
-        _jsonSettings = new JsonSerializerSettings
+        EnsurePreferencesFileExists();
+    }
+
+    public AppPreferences Load()
+    {
+        lock (_syncLock)
         {
-            Formatting = Formatting.Indented,
-            ContractResolver = new CamelCasePropertyNamesContractResolver()
+            if (_cachedPreferences != null)
+            {
+                return _cachedPreferences;
+            }
+
+            _cachedPreferences = ReadPreferencesFromDisk();
+            return _cachedPreferences;
+        }
+    }
+
+    public void Save(AppPreferences preferences)
+    {
+        if (preferences == null)
+        {
+            throw new ArgumentNullException(nameof(preferences));
+        }
+
+        lock (_syncLock)
+        {
+            _cachedPreferences = preferences;
+            PersistPreferences(_cachedPreferences);
+        }
+    }
+
+    private void EnsurePreferencesFileExists()
+    {
+        if (File.Exists(_preferencesPath))
+        {
+            return;
+        }
+
+        var defaults = CreateDefaultPreferences();
+        PersistPreferences(defaults);
+    }
+
+    private static AppPreferences CreateDefaultPreferences()
+    {
+        return new AppPreferences
+        {
+            Language = AppLanguageHelper.GetSystemDefaultLanguage()
         };
-        _jsonSettings.Converters.Add(new StringEnumConverter { AllowIntegerValues = false });
     }
 
-    public async Task<AppPreferences> LoadAsync()
+    private AppPreferences ReadPreferencesFromDisk()
     {
-        await _syncLock.WaitAsync();
         try
         {
-            if (!File.Exists(_preferencesPath))
-            {
-                return new AppPreferences();
-            }
-
-            try
-            {
-                var json = await File.ReadAllTextAsync(_preferencesPath);
-                return JsonConvert.DeserializeObject<AppPreferences>(json, _jsonSettings) ?? new AppPreferences();
-            }
-            catch (JsonException)
-            {
-                return new AppPreferences();
-            }
+            var json = File.ReadAllText(_preferencesPath);
+            return JsonSerializer.Deserialize(
+                       json,
+                       CartonCoreJsonContext.Default.AppPreferences) ?? CreateAndPersistDefaults();
         }
-        finally
+        catch (JsonException)
         {
-            _syncLock.Release();
+            return CreateAndPersistDefaults();
         }
     }
 
-    public async Task SaveAsync(AppPreferences preferences)
+    private AppPreferences CreateAndPersistDefaults()
     {
-        await _syncLock.WaitAsync();
-        try
+        var defaults = CreateDefaultPreferences();
+        PersistPreferences(defaults);
+        return defaults;
+    }
+
+    private void PersistPreferences(AppPreferences preferences)
+    {
+        var directory = Path.GetDirectoryName(_preferencesPath);
+        if (!string.IsNullOrEmpty(directory))
         {
-            var json = JsonConvert.SerializeObject(preferences, _jsonSettings);
-            await File.WriteAllTextAsync(_preferencesPath, json);
+            Directory.CreateDirectory(directory);
         }
-        finally
-        {
-            _syncLock.Release();
-        }
+
+        using var stream = new FileStream(_preferencesPath, FileMode.Create, FileAccess.Write, FileShare.None);
+        using var writer = new Utf8JsonWriter(
+            stream,
+            new JsonWriterOptions
+            {
+                Indented = true,
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            });
+        JsonSerializer.Serialize(writer, preferences, CartonCoreJsonContext.Default.AppPreferences);
+        writer.Flush();
     }
 }

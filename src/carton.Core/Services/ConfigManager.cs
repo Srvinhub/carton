@@ -1,5 +1,5 @@
 using carton.Core.Models;
-using Newtonsoft.Json;
+using carton.Core.Serialization;
 
 namespace carton.Core.Services;
 
@@ -42,7 +42,6 @@ public class ProfileConfigOptions
 public class ConfigManager : IConfigManager
 {
     private readonly string _baseDirectory;
-    private readonly JsonSerializerSettings _jsonSettings;
 
     public string ConfigDirectory { get; }
     public string LocalConfigDirectory { get; }
@@ -68,10 +67,6 @@ public class ConfigManager : IConfigManager
         Directory.CreateDirectory(CacheDirectory);
         Directory.CreateDirectory(LogDirectory);
 
-        _jsonSettings = new JsonSerializerSettings
-        {
-            Formatting = Formatting.Indented
-        };
     }
 
     public async Task<string> CreateDefaultConfigAsync()
@@ -334,8 +329,10 @@ public class ConfigManager : IConfigManager
         };
 
         var configPath = Path.Combine(RuntimeConfigDirectory, $"generated_{DateTime.Now:yyyyMMddHHmmss}.json");
-        var json = JsonConvert.SerializeObject(config, _jsonSettings);
-        await File.WriteAllTextAsync(configPath, json);
+        await JsonSerialization.WriteIndentedAsync(
+            configPath,
+            config,
+            CartonCoreJsonContext.Default.SingBoxConfig);
         return configPath;
     }
 

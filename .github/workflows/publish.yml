@@ -1,4 +1,4 @@
-name: Build & Publish Carton
+name: Build & Publish carton
 
 on:
   push:
@@ -31,6 +31,7 @@ env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   NUGET_XMLDOC_MODE: skip
+  APP_NAME: ${{ github.event.repository.name }}
 
 jobs:
   metadata:
@@ -92,7 +93,8 @@ jobs:
           fi
           shopt -u nocasematch
 
-          release_name="Carton ${version}"
+          app_name="${APP_NAME:-carton}"
+          release_name="${app_name} ${version}"
 
           {
             echo "version=${version}"
@@ -112,22 +114,22 @@ jobs:
         include:
           - os: windows-latest
             rid: win-x64
-            mainExe: carton.GUI.exe
-            icon: src/carton.GUI/Assets/avalonia-logo.ico
+            mainExe: carton.exe
+            icon: src/carton.GUI/Assets/carton_icon.ico
             portableExt: zip
           - os: windows-latest
             rid: win-arm64
-            mainExe: carton.GUI.exe
-            icon: src/carton.GUI/Assets/avalonia-logo.ico
+            mainExe: carton.exe
+            icon: src/carton.GUI/Assets/carton_icon.ico
             portableExt: zip
           - os: ubuntu-22.04
             rid: linux-x64
-            mainExe: carton.GUI
+            mainExe: carton
             icon: src/carton.GUI/Assets/carton_icon.png
             portableExt: tar.gz
           - os: ubuntu-22.04
             rid: linux-arm64
-            mainExe: carton.GUI
+            mainExe: carton
             icon: src/carton.GUI/Assets/carton_icon.png
             portableExt: tar.gz
     env:
@@ -168,17 +170,23 @@ jobs:
         run: |
           publish_dir="$GITHUB_WORKSPACE/artifacts/publish/${{ matrix.rid }}"
           mkdir -p "$publish_dir"
-          dotnet publish src/carton.GUI/carton.GUI.csproj \
-            -c Release \
-            -r ${{ matrix.rid }} \
-            -o "$publish_dir" \
-            /p:PublishAot=true \
-            /p:SelfContained=true \
-            /p:StripSymbols=false \
-            /p:DebugSymbols=false \
-            /p:InvariantGlobalization=true \
-            /p:IncludeNativeLibrariesForSelfExtract=true \
+          props=(
+            -c Release
+            -r ${{ matrix.rid }}
+            -o "$publish_dir"
+            /p:PublishAot=true
+            /p:SelfContained=true
+            /p:StripSymbols=true
+            /p:DebugSymbols=false
+            /p:DebugType=None
+            /p:InvariantGlobalization=true
+            /p:IncludeNativeLibrariesForSelfExtract=true
             /p:EnableCompressionInSingleFile=true
+          )
+          if [[ "${{ matrix.rid }}" == "linux-arm64" ]]; then
+            props+=(/p:ObjCopyName=aarch64-linux-gnu-objcopy)
+          fi
+          dotnet publish src/carton.GUI/carton.GUI.csproj "${props[@]}"
           echo "PUBLISH_DIR=$publish_dir" >> "$GITHUB_ENV"
 
       - name: Publish (Windows)
@@ -194,6 +202,8 @@ jobs:
             /p:PublishAot=true `
             /p:SelfContained=true `
             /p:StripSymbols=true `
+            /p:DebugSymbols=false `
+            /p:DebugType=None `
             /p:InvariantGlobalization=true `
             /p:IncludeNativeLibrariesForSelfExtract=true `
             /p:EnableCompressionInSingleFile=true
@@ -205,7 +215,8 @@ jobs:
         run: |
           pack_dir="$GITHUB_WORKSPACE/artifacts/pack/${{ matrix.rid }}-$CHANNEL"
           mkdir -p "$pack_dir"
-          portable_name="Carton-${VERSION}-${{ matrix.rid }}-portable.tar.gz"
+          find "$PUBLISH_DIR" -name '*.pdb' -delete
+          portable_name="${APP_NAME}-${VERSION}-${{ matrix.rid }}-portable.tar.gz"
           tar -C "$PUBLISH_DIR" -czf "$pack_dir/$portable_name" .
           echo "PACK_DIR=$pack_dir" >> "$GITHUB_ENV"
 
@@ -215,7 +226,8 @@ jobs:
         run: |
           $packDir = "$env:GITHUB_WORKSPACE\artifacts\pack\${{ matrix.rid }}-$env:CHANNEL"
           New-Item -ItemType Directory -Path $packDir -Force | Out-Null
-          $portableName = "Carton-$env:VERSION-${{ matrix.rid }}-portable.zip"
+          Get-ChildItem -Path $env:PUBLISH_DIR -Filter '*.pdb' -Recurse | Remove-Item -Force
+          $portableName = "$env:APP_NAME-$env:VERSION-${{ matrix.rid }}-portable.zip"
           Compress-Archive -Path "$env:PUBLISH_DIR\*" -DestinationPath "$packDir\$portableName" -Force
           "PACK_DIR=$packDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
@@ -225,16 +237,16 @@ jobs:
         run: |
           icon_path=$(realpath '${{ matrix.icon }}')
           vpk pack \
-            --packId carton \
+            --packId "$APP_NAME" \
             --packVersion "$VERSION" \
             --channel "$CHANNEL" \
             --runtime ${{ matrix.rid }} \
             --packDir "$PUBLISH_DIR" \
             --mainExe '${{ matrix.mainExe }}' \
-            --packTitle 'Carton' \
+            --packTitle "$APP_NAME" \
             --icon "$icon_path" \
             --outputDir "$PACK_DIR"
-          echo "$CHANNEL_KEY" > "$PACK_DIR/channel.txt"
+          echo "$CHANNEL" > "$PACK_DIR/channel.txt"
 
       - name: Package with Velopack (Windows)
         if: runner.os == 'Windows'
@@ -242,13 +254,13 @@ jobs:
         run: |
           $iconPath = (Resolve-Path '${{ matrix.icon }}').Path
           vpk pack `
-            --packId carton `
+            --packId "$env:APP_NAME" `
             --packVersion $env:VERSION `
             --channel $env:CHANNEL `
             --runtime ${{ matrix.rid }} `
             --packDir $env:PUBLISH_DIR `
             --mainExe '${{ matrix.mainExe }}' `
-            --packTitle 'Carton' `
+            --packTitle "$env:APP_NAME" `
             --icon $iconPath `
             --outputDir $env:PACK_DIR
           Set-Content -Path "$env:PACK_DIR\channel.txt" -Value $env:CHANNEL
@@ -271,6 +283,41 @@ jobs:
         with:
           path: dist
 
+      - name: Normalize installer filenames
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          app_name="${APP_NAME:-carton}"
+          for artifact in dist/vpk-*; do
+            [[ -d "$artifact" ]] || continue
+            artifact_name=$(basename "$artifact")
+            rid=$(echo "$artifact_name" | sed 's/^vpk-//;s/-[^-]*$//')
+
+            while IFS= read -r -d '' setup; do
+              base_name=$(basename "$setup")
+              target="${app_name}-${VERSION}-${rid}-Setup.exe"
+              if [[ "$base_name" == "$target" ]]; then
+                continue
+              fi
+              dest="${setup%/*}/$target"
+              cp -f "$setup" "$dest"
+            done < <(find "$artifact" -maxdepth 1 -type f -iname '*setup.exe' -print0)
+
+            while IFS= read -r -d '' appimage; do
+              base_name=$(basename "$appimage")
+              target="${app_name}-${VERSION}-${rid}.AppImage"
+              if [[ "$base_name" == "$target" ]]; then
+                continue
+              fi
+              dest="${appimage%/*}/$target"
+              cp -f "$appimage" "$dest"
+            done < <(find "$artifact" -maxdepth 1 -type f -iname '*.AppImage' -print0)
+          done
+
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
@@ -286,7 +333,6 @@ jobs:
         shell: bash
         env:
           REPO_URL: https://github.com/${{ github.repository }}
-          VERSION: ${{ needs.metadata.outputs.version }}
           TAG: ${{ needs.metadata.outputs.tag }}
           RELEASE_NAME: ${{ needs.metadata.outputs.release_name }}
           IS_PRERELEASE: ${{ needs.metadata.outputs.is_prerelease }}
@@ -294,38 +340,92 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          artifacts=(dist/*)
-          if [[ ${#artifacts[@]} -eq 0 ]]; then
-            echo "No packaged artifacts were downloaded." >&2
+
+          # 按 channel 把各平台的 vpk 文件合并到一个目录
+          # 跳过 releases*.json（vpk upload 重新生成）和 portable 压缩包（单独上传）
+          # 跳过 channel.txt（辅助文件）
+          declare -A merged
+          for artifact in dist/*/; do
+            artifact="${artifact%/}"
+            channel=$(cat "$artifact/channel.txt" 2>/dev/null | tr -d '[:space:]')
+            if [[ -z "$channel" ]]; then
+              echo "Warning: channel.txt missing in $artifact, skipping." >&2
+              continue
+            fi
+            merged_dir="dist/merged-$channel"
+            mkdir -p "$merged_dir"
+            find "$artifact" -maxdepth 1 -type f \
+              ! -name 'releases*.json' \
+              ! -name 'channel.txt' \
+              ! -name '*-portable.zip' \
+              ! -name '*-portable.tar.gz' \
+              -exec cp -n {} "$merged_dir/" \;
+            merged[$channel]="$merged_dir"
+          done
+
+          if [[ ${#merged[@]} -eq 0 ]]; then
+            echo "No packaged artifacts were found." >&2
             exit 1
           fi
 
           first=1
-          for artifact in "${artifacts[@]}"; do
-            channel="${artifact##*/}"
-            channel="${channel#vpk-}"
+          for channel in "${!merged[@]}"; do
+            merged_dir="${merged[$channel]}"
             flags=(
               upload github
               --repoUrl "$REPO_URL"
               --token "$TOKEN"
               --channel "$channel"
-              --outputDir "$artifact"
+              --outputDir "$merged_dir"
               --tag "$TAG"
               --releaseName "$RELEASE_NAME"
             )
-
             if [[ "$first" -eq 1 ]]; then
               flags+=(--publish)
-              if [[ "$IS_PRERELEASE" == "true" ]]; then
-                flags+=(--pre)
-              fi
               first=0
             else
               flags+=(--merge)
-              if [[ "$IS_PRERELEASE" == "true" ]]; then
-                flags+=(--pre)
-              fi
             fi
-
+            if [[ "$IS_PRERELEASE" == "true" ]]; then
+              flags+=(--pre)
+            fi
             vpk "${flags[@]}"
           done
+
+      - name: Upload portable archives and installers
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.metadata.outputs.tag }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          uploads=()
+          app_name="${APP_NAME:-carton}"
+          version="${VERSION}"
+
+          # portable 压缩包（文件名已含 rid，可直接上传）
+          while IFS= read -r -d '' f; do
+            uploads+=("$f")
+          done < <(find dist -maxdepth 2 \( -name '*-portable.zip' -o -name '*-portable.tar.gz' \) -print0)
+
+          for artifact in dist/vpk-*; do
+            [[ -d "$artifact" ]] || continue
+            while IFS= read -r -d '' setup; do
+              uploads+=("$setup")
+            done < <(find "$artifact" -maxdepth 1 -type f -name "${app_name}-${version}-*-Setup.exe" -print0)
+
+            while IFS= read -r -d '' appimage; do
+              uploads+=("$appimage")
+            done < <(find "$artifact" -maxdepth 1 -type f -name "${app_name}-${version}-*.AppImage" -print0)
+          done
+
+          if [[ ${#uploads[@]} -eq 0 ]]; then
+            echo "No files to upload, skipping."
+            exit 0
+          fi
+
+          gh release upload "$TAG" "${uploads[@]}" --repo "$REPO" --clobber

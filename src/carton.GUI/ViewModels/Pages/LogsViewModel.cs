@@ -33,7 +33,7 @@ public partial class LogsViewModel : PageViewModelBase
     private readonly List<LogEntryViewModel> _allLogs = new();
 
     // Keep a large rolling window for troubleshooting while preventing unbounded growth.
-    private const int MaxLogEntries = 50000;
+    private const int MaxLogEntries = 2000;
 
     public LogsViewModel()
     {
@@ -61,7 +61,7 @@ public partial class LogsViewModel : PageViewModelBase
 
         var level = "Info";
         var msg = message;
-        
+
         if (message.Contains("[ERROR]") || message.Contains("[error]"))
         {
             level = "Error";

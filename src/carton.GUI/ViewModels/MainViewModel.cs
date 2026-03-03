@@ -103,7 +103,7 @@ public partial class MainViewModel : ViewModelBase
         _configManager = new ConfigManager(workingDirectory);
         _profileManager = new ProfileManager(workingDirectory, _configManager);
         _kernelManager = new KernelManager(appDataPath);
-        _preferencesService = new PreferencesService(workingDirectory);
+        _preferencesService = App.PreferencesService;
         _localizationService = LocalizationService.Instance;
         _localizationService.LanguageChanged += OnLanguageChanged;
         _themeService = ThemeService.Instance;
@@ -148,7 +148,7 @@ public partial class MainViewModel : ViewModelBase
 
     private async Task InitializeAsync()
     {
-        var preferences = await _preferencesService.LoadAsync();
+        var preferences = _preferencesService.Load();
         _localizationService.SetLanguage(preferences.Language);
         _themeService.ApplyTheme(preferences.Theme);
         _autoStartOnLaunch = preferences.AutoStartOnLaunch;

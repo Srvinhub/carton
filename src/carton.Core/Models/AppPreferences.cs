@@ -4,10 +4,17 @@ public class AppPreferences
 {
     public bool StartAtLogin { get; set; }
     public bool AutoStartOnLaunch { get; set; }
-    public string Theme { get; set; } = "System";
-    public AppLanguage Language { get; set; } = AppLanguageHelper.GetSystemDefaultLanguage();
+    public AppTheme Theme { get; set; } = AppTheme.System;
+    public AppLanguage Language { get; set; } = AppLanguage.English;
     public AppUpdateChannel UpdateChannel { get; set; } = AppUpdateChannel.Release;
     public bool AutoCheckAppUpdates { get; set; } = true;
+}
+
+public enum AppTheme
+{
+    System,
+    Light,
+    Dark
 }
 
 public enum AppLanguage

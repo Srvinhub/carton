@@ -1,3 +1,9 @@
+using carton.Core.Models;
+using carton.Core.Services;
+using carton.GUI.Models;
+using carton.GUI.Services;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using System;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -5,16 +11,10 @@ using System.Linq;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using Avalonia.Threading;
-using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
-using carton.Core.Services;
-using carton.Core.Models;
-using carton.GUI.Services;
-using carton.GUI.Models;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace carton.ViewModels;
 
@@ -532,17 +532,17 @@ public partial class DashboardViewModel : PageViewModelBase
     {
         try
         {
-            var root = JObject.Parse(await File.ReadAllTextAsync(sourceConfigPath));
-            if (root == null)
+            var parsed = JsonNode.Parse(await File.ReadAllTextAsync(sourceConfigPath));
+            if (parsed is not JsonObject root)
             {
                 StartupStatus = GetString("Dashboard.Startup.InvalidConfigJson", "Invalid profile config JSON");
                 LogError("Invalid profile config JSON");
                 return null;
             }
 
-            var inbounds = new JArray
+            var inbounds = new JsonArray
             {
-                new JObject
+                new JsonObject
                 {
                     ["type"] = "mixed",
                     ["tag"] = "mixed-in",
@@ -554,20 +554,20 @@ public partial class DashboardViewModel : PageViewModelBase
 
             if (EnableTunInbound)
             {
-                var tunAddresses = new JArray("172.18.0.1/30");
+                var tunAddresses = new JsonArray("172.18.0.1/30");
                 if (Socket.OSSupportsIPv6)
                 {
                     tunAddresses.Add("fdfe:dcba:9876::1/126");
                 }
 
-                inbounds.Add(new JObject
+                inbounds.Add(new JsonObject
                 {
                     ["type"] = "tun",
                     ["tag"] = "tun-in",
                     ["address"] = tunAddresses,
                     ["auto_route"] = true,
                     ["strict_route"] = true,
-                    ["route_exclude_address"] = new JArray(
+                    ["route_exclude_address"] = new JsonArray(
                         "10.0.0.0/8",
                         "192.168.0.0/16",
                         "fe80::/10")
@@ -576,20 +576,16 @@ public partial class DashboardViewModel : PageViewModelBase
 
             root["inbounds"] = inbounds;
 
-            var experimental = root["experimental"] as JObject;
-            if (experimental == null)
-            {
-                experimental = new JObject();
-                root["experimental"] = experimental;
-            }
+            var experimental = root["experimental"] as JsonObject ?? new JsonObject();
+            root["experimental"] = experimental;
 
-            experimental["clash_api"] = new JObject
+            experimental["clash_api"] = new JsonObject
             {
                 ["external_controller"] = $"{ClashApiHost}:{ClashApiPort}",
                 ["external_ui"] = "dashboard"
             };
 
-            experimental["cache_file"] = new JObject
+            experimental["cache_file"] = new JsonObject
             {
                 ["enabled"] = true,
                 ["store_fakeip"] = true,
@@ -600,7 +596,10 @@ public partial class DashboardViewModel : PageViewModelBase
             Directory.CreateDirectory(runtimeDirectory);
             var runtimeConfigPath = Path.Combine(runtimeDirectory, $"profile_{profileId}.runtime.json");
 
-            var json = root.ToString(Formatting.Indented);
+
+            var json = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+            // 去除转义
+            json = Regex.Unescape(json);
             await File.WriteAllTextAsync(runtimeConfigPath, json);
             IsPortEditing = false;
             LogInfo($"Runtime inbounds prepared: port={port}, lan={AllowLanConnections}, systemProxy={EnableSystemProxy}, tun={EnableTunInbound}");
@@ -641,8 +640,14 @@ public partial class DashboardViewModel : PageViewModelBase
             }
 
             var payload = await response.Content.ReadAsStringAsync();
-            var root = JObject.Parse(payload);
-            return root.Value<string>("mode");
+            using var document = JsonDocument.Parse(payload);
+            if (document.RootElement.TryGetProperty("mode", out var modeElement) &&
+                modeElement.ValueKind == JsonValueKind.String)
+            {
+                return modeElement.GetString();
+            }
+
+            return null;
         }
         catch (Exception ex)
         {
@@ -655,13 +660,13 @@ public partial class DashboardViewModel : PageViewModelBase
     {
         try
         {
-            var body = new JObject
+            var body = new JsonObject
             {
                 ["mode"] = mode
             };
             var request = new HttpRequestMessage(new HttpMethod("PATCH"), "configs")
             {
-                Content = new StringContent(body.ToString(Formatting.None), Encoding.UTF8, "application/json")
+                Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json")
             };
 
             var response = await _clashHttpClient.SendAsync(request);

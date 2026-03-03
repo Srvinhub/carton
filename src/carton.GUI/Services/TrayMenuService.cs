@@ -1,18 +1,16 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Platform;
+using Avalonia.Threading;
+using carton.Core.Models;
+using carton.ViewModels;
+using carton.Views;
 using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Threading.Tasks;
-using Avalonia;
-using Avalonia.Controls;
-using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Controls.Platform;
-using Avalonia.Platform;
-using Avalonia.Threading;
-using carton.Core.Models;
-using carton.GUI.Models;
-using carton.ViewModels;
-using carton.Views;
 
 namespace carton.GUI.Services;
 
@@ -120,7 +118,8 @@ public sealed class TrayMenuService : IDisposable
     private void CreateTrayIcon()
     {
         var menu = BuildInitialMenu();
-        var iconUri = new Uri("avares://carton.GUI/Assets/carton_icon.png");
+        var assemblyName = _application?.GetType().Assembly.GetName().Name ?? "carton";
+        var iconUri = new Uri($"avares://{assemblyName}/Assets/carton_icon.png");
         var icon = new TrayIcon
         {
             Icon = new WindowIcon(AssetLoader.Open(iconUri)),
@@ -179,7 +178,10 @@ public sealed class TrayMenuService : IDisposable
         RunOnUiThread(() =>
         {
             _mainWindow?.AllowClose();
-            _desktopLifetime?.Shutdown();
+            _mainWindow?.Close();
+            //_desktopLifetime?.Shutdown();
+            SingleInstanceService.Dispose();
+            Environment.Exit(0);
         });
     }
 

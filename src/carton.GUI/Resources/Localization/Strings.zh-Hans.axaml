@@ -147,8 +147,14 @@
 	<x:String x:Key="Settings.Update.Status.Error">更新失败</x:String>
 	<x:String x:Key="Settings.Update.Status.Latest">已经是最新版本</x:String>
 	<x:String x:Key="Settings.Update.Status.Unsupported">更新服务不可用</x:String>
+	<x:String x:Key="Settings.Update.Status.ManualRequired">发现新版本，请前往发布页下载</x:String>
+	<x:String x:Key="Settings.Update.Status.OpenReleasesFailed">打开发布页失败</x:String>
 	<x:String x:Key="Settings.Update.Status.DownloadFirst">请先下载更新</x:String>
 	<x:String x:Key="Settings.Update.Status.Applying">正在重启以应用更新...</x:String>
+	<x:String x:Key="Settings.Update.ManualDialog.Title">需要手动更新</x:String>
+	<x:String x:Key="Settings.Update.ManualDialog.Message">免安装版本无法自动更新，是否打开发布页下载 {0}？</x:String>
+	<x:String x:Key="Settings.Update.ManualDialog.OpenButton">打开发布页</x:String>
+	<x:String x:Key="Settings.Update.ManualDialog.LaterButton">稍后再说</x:String>
 
 	<x:String x:Key="Settings.Section.Appearance">外观</x:String>
 	<x:String x:Key="Settings.Appearance.Theme">主题</x:String>

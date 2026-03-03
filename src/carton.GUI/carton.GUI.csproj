@@ -1,46 +1,55 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
-    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
-    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
-    <AvaloniaTelemetry>false</AvaloniaTelemetry>
-    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64</RuntimeIdentifiers>
-    <Version>0.1.0-beta.4</Version>
-    <FileVersion>0.1.0.4</FileVersion>
-    <AssemblyVersion>0.1.0.4</AssemblyVersion>
-  </PropertyGroup>
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net10.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ApplicationManifest>app.manifest</ApplicationManifest>
+		<AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+		<BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+		<AvaloniaTelemetry>false</AvaloniaTelemetry>
+		<RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64</RuntimeIdentifiers>
+		<Version>0.1.0-beta.7</Version>
+		<FileVersion>0.1.0.7</FileVersion>
+		<AssemblyVersion>0.1.0.7</AssemblyVersion>
+		<AssemblyName>carton</AssemblyName>
+		<RootNamespace>carton</RootNamespace>
+		<ApplicationIcon>Assets\carton_icon.ico</ApplicationIcon>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <Folder Include="Models\" />
-    <AvaloniaResource Include="Assets\**" />
-    <AvaloniaResource Include="Resources\**"
-                      Exclude="Resources\Localization\Strings.en.axaml;Resources\Localization\Strings.zh-Hans.axaml" />
-    <AvaloniaXaml Remove="Resources\Localization\Strings.en.axaml" />
-    <AvaloniaXaml Remove="Resources\Localization\Strings.zh-Hans.axaml" />
-    <AvaloniaXaml Include="Resources\Localization\Strings.en.axaml" />
-    <AvaloniaXaml Include="Resources\Localization\Strings.zh-Hans.axaml" />
-  </ItemGroup>
+	<ItemGroup>
+		<Folder Include="Models\" />
+		<AvaloniaResource Include="Assets\**" />
+		<AvaloniaResource Include="Resources\**"
+						  Exclude="Resources\Localization\Strings.en.axaml;Resources\Localization\Strings.zh-Hans.axaml" />
+		<AvaloniaXaml Remove="Resources\Localization\Strings.en.axaml" />
+		<AvaloniaXaml Remove="Resources\Localization\Strings.zh-Hans.axaml" />
+		<AvaloniaXaml Include="Resources\Localization\Strings.en.axaml" />
+		<AvaloniaXaml Include="Resources\Localization\Strings.zh-Hans.axaml" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Avalonia" Version="11.3.12" />
-    <PackageReference Include="Avalonia.Desktop" Version="11.3.12" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.12" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.12" />
-    <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.3.12" />
-    <PackageReference Include="Avalonia.Diagnostics" Version="11.3.12">
-      <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
-      <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
-    </PackageReference>
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageReference Include="ReactiveUI.Avalonia" Version="11.4.7" />
-    <PackageReference Include="Velopack" Version="0.0.1298" />
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="Avalonia" Version="11.3.12" />
+		<PackageReference Include="Avalonia.Desktop" Version="11.3.12" />
+		<PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.12" />
+		<PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.12" />
+		<PackageReference Include="Avalonia.Controls.DataGrid" Version="11.3.12" />
+		<PackageReference Include="Avalonia.Diagnostics" Version="11.3.12">
+			<IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
+			<PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
+		</PackageReference>
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+		<PackageReference Include="ReactiveUI.Avalonia" Version="11.4.7" />
+		<PackageReference Include="Velopack" Version="0.0.1298" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\carton.Core\carton.Core.csproj" />
-  </ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\carton.Core\carton.Core.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<TrimmerRootAssembly Include="System.Runtime.Serialization.Primitives" />
+		<TrimmerRootAssembly Include="carton.Core" />
+		<TrimmerRootAssembly Include="carton" />
+	</ItemGroup>
 </Project>
