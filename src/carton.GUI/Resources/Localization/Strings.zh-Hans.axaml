@@ -125,6 +125,26 @@
 	<x:String x:Key="Settings.General.StartAtLogin">开机启动</x:String>
 	<x:String x:Key="Settings.General.AutoStartOnLaunch">打开 Carton 时自动启动</x:String>
 
+	<x:String x:Key="Settings.Section.Update">应用更新</x:String>
+	<x:String x:Key="Settings.Update.Channel">更新通道</x:String>
+	<x:String x:Key="Settings.Update.CurrentVersion">当前版本</x:String>
+	<x:String x:Key="Settings.Update.LatestVersion">最新可用</x:String>
+	<x:String x:Key="Settings.Update.AutoCheck">启动时自动检查更新</x:String>
+	<x:String x:Key="Settings.Update.Channel.ReleaseLabel">稳定通道</x:String>
+	<x:String x:Key="Settings.Update.Channel.BetaLabel">测试通道</x:String>
+	<x:String x:Key="Settings.Update.Check">检查更新</x:String>
+	<x:String x:Key="Settings.Update.Download">下载更新</x:String>
+	<x:String x:Key="Settings.Update.Apply">重启并应用</x:String>
+	<x:String x:Key="Settings.Update.Status.Checking">正在检查更新...</x:String>
+	<x:String x:Key="Settings.Update.Status.Available">发现新版本</x:String>
+	<x:String x:Key="Settings.Update.Status.Downloading">正在下载更新...</x:String>
+	<x:String x:Key="Settings.Update.Status.Ready">更新已下载，请重启以生效</x:String>
+	<x:String x:Key="Settings.Update.Status.Error">更新失败</x:String>
+	<x:String x:Key="Settings.Update.Status.Latest">已经是最新版本</x:String>
+	<x:String x:Key="Settings.Update.Status.Unsupported">更新服务不可用</x:String>
+	<x:String x:Key="Settings.Update.Status.DownloadFirst">请先下载更新</x:String>
+	<x:String x:Key="Settings.Update.Status.Applying">正在重启以应用更新...</x:String>
+
 	<x:String x:Key="Settings.Section.Appearance">外观</x:String>
 	<x:String x:Key="Settings.Appearance.Theme">主题</x:String>
 	<x:String x:Key="Settings.Appearance.Language">语言</x:String>

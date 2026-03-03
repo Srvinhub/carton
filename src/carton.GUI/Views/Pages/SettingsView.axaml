@@ -72,6 +72,65 @@
         </StackPanel>
       </Border>
 
+      <TextBlock Text="{DynamicResource Settings.Section.Update}" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,0"/>
+
+      <Border Classes="card" Padding="16">
+        <StackPanel Spacing="12">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+            <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Update.Channel}" VerticalAlignment="Center"/>
+            <ComboBox Grid.Column="1"
+                      ItemsSource="{Binding UpdateChannels}"
+                      SelectedValue="{Binding SelectedUpdateChannel}"
+                      SelectedValuePath="Channel"
+                      DisplayMemberPath="DisplayName"
+                      HorizontalAlignment="Left"
+                      MinWidth="150"/>
+          </Grid>
+
+          <CheckBox Content="{DynamicResource Settings.Update.AutoCheck}"
+                    IsChecked="{Binding AutoCheckAppUpdates}"/>
+
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+            <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Update.CurrentVersion}" VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="1" Text="{Binding CurrentAppVersion}" FontWeight="Medium"/>
+          </Grid>
+
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+            <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Update.LatestVersion}" VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="1" Text="{Binding LatestAvailableVersion}" FontWeight="Medium"/>
+          </Grid>
+
+          <ProgressBar Maximum="100"
+                       Height="4"
+                       IsIndeterminate="True"
+                       IsVisible="{Binding IsCheckingAppUpdate}"/>
+
+          <ProgressBar Value="{Binding AppUpdateProgress}"
+                       Maximum="100"
+                       Height="4"
+                       IsVisible="{Binding IsDownloadingAppUpdate}"/>
+
+          <TextBlock Text="{Binding AppUpdateStatus}"
+                     Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                     TextWrapping="Wrap"/>
+
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="{DynamicResource Settings.Update.Check}"
+                    Command="{Binding CheckAppUpdateCommand}"
+                    IsEnabled="{Binding !IsCheckingAppUpdate}"/>
+            <Button Content="{DynamicResource Settings.Update.Download}"
+                    Command="{Binding DownloadAppUpdateCommand}"
+                    IsEnabled="{Binding IsAppUpdateAvailable}"
+                    IsVisible="{Binding IsAppUpdateAvailable}"/>
+            <Button Content="{DynamicResource Settings.Update.Apply}"
+                    Command="{Binding ApplyAppUpdateCommand}"
+                    Classes="accent"
+                    IsEnabled="{Binding IsAppUpdateReadyToInstall}"
+                    IsVisible="{Binding IsAppUpdateReadyToInstall}"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
       <TextBlock Text="{DynamicResource Settings.Section.Appearance}" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,0"/>
 
       <Border Classes="card" Padding="16">

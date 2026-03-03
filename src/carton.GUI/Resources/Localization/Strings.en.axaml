@@ -126,6 +126,26 @@
 	<x:String x:Key="Settings.General.StartAtLogin">Start at Login</x:String>
 	<x:String x:Key="Settings.General.AutoStartOnLaunch">Auto start Carton when opened</x:String>
 
+	<x:String x:Key="Settings.Section.Update">Updates</x:String>
+	<x:String x:Key="Settings.Update.Channel">Channel</x:String>
+	<x:String x:Key="Settings.Update.CurrentVersion">Current version</x:String>
+	<x:String x:Key="Settings.Update.LatestVersion">Latest available</x:String>
+	<x:String x:Key="Settings.Update.AutoCheck">Automatically check on startup</x:String>
+	<x:String x:Key="Settings.Update.Channel.ReleaseLabel">Release (stable)</x:String>
+	<x:String x:Key="Settings.Update.Channel.BetaLabel">Beta (preview)</x:String>
+	<x:String x:Key="Settings.Update.Check">Check for Updates</x:String>
+	<x:String x:Key="Settings.Update.Download">Download Update</x:String>
+	<x:String x:Key="Settings.Update.Apply">Restart to Apply</x:String>
+	<x:String x:Key="Settings.Update.Status.Checking">Checking for updates...</x:String>
+	<x:String x:Key="Settings.Update.Status.Available">New version available</x:String>
+	<x:String x:Key="Settings.Update.Status.Downloading">Downloading update...</x:String>
+	<x:String x:Key="Settings.Update.Status.Ready">Update downloaded. Restart to apply.</x:String>
+	<x:String x:Key="Settings.Update.Status.Error">Update failed</x:String>
+	<x:String x:Key="Settings.Update.Status.Latest">You are up to date</x:String>
+	<x:String x:Key="Settings.Update.Status.Unsupported">Update service unavailable</x:String>
+	<x:String x:Key="Settings.Update.Status.DownloadFirst">Download the update first</x:String>
+	<x:String x:Key="Settings.Update.Status.Applying">Restarting to apply update...</x:String>
+
 	<x:String x:Key="Settings.Section.Appearance">Appearance</x:String>
 	<x:String x:Key="Settings.Appearance.Theme">Theme</x:String>
 	<x:String x:Key="Settings.Appearance.Language">Language</x:String>

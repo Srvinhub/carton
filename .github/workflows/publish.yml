@@ -132,7 +132,7 @@ jobs:
             portableExt: tar.gz
     env:
       VERSION: ${{ needs.metadata.outputs.version }}
-      CHANNEL_KEY: ${{ matrix.rid }}-${{ needs.metadata.outputs.channel }}
+      CHANNEL: ${{ needs.metadata.outputs.channel }}
     steps:
       - uses: actions/checkout@v4
 
@@ -202,7 +202,7 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          pack_dir="$GITHUB_WORKSPACE/artifacts/pack/${CHANNEL_KEY}"
+          pack_dir="$GITHUB_WORKSPACE/artifacts/pack/${{ matrix.rid }}-$CHANNEL"
           mkdir -p "$pack_dir"
           portable_name="Carton-${VERSION}-${{ matrix.rid }}-portable.tar.gz"
           tar -C "$PUBLISH_DIR" -czf "$pack_dir/$portable_name" .
@@ -212,7 +212,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $packDir = "$env:GITHUB_WORKSPACE\artifacts\pack\$env:CHANNEL_KEY"
+          $packDir = "$env:GITHUB_WORKSPACE\artifacts\pack\${{ matrix.rid }}-$env:CHANNEL"
           New-Item -ItemType Directory -Path $packDir -Force | Out-Null
           $portableName = "Carton-$env:VERSION-${{ matrix.rid }}-portable.zip"
           Compress-Archive -Path "$env:PUBLISH_DIR\*" -DestinationPath "$packDir\$portableName" -Force
@@ -226,7 +226,7 @@ jobs:
           vpk pack \
             --packId carton \
             --packVersion "$VERSION" \
-            --channel "$CHANNEL_KEY" \
+            --channel "$CHANNEL" \
             --runtime ${{ matrix.rid }} \
             --packDir "$PUBLISH_DIR" \
             --mainExe '${{ matrix.mainExe }}' \
@@ -243,19 +243,19 @@ jobs:
           vpk pack `
             --packId carton `
             --packVersion $env:VERSION `
-            --channel $env:CHANNEL_KEY `
+            --channel $env:CHANNEL `
             --runtime ${{ matrix.rid }} `
             --packDir $env:PUBLISH_DIR `
             --mainExe '${{ matrix.mainExe }}' `
             --packTitle 'Carton' `
             --icon $iconPath `
             --outputDir $env:PACK_DIR
-          Set-Content -Path "$env:PACK_DIR\channel.txt" -Value $env:CHANNEL_KEY
+          Set-Content -Path "$env:PACK_DIR\channel.txt" -Value $env:CHANNEL
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: vpk-${{ env.CHANNEL_KEY }}
+          name: vpk-${{ matrix.rid }}-${{ env.CHANNEL }}
           path: ${{ env.PACK_DIR }}
 
   publish:

@@ -124,7 +124,8 @@ public partial class MainViewModel : ViewModelBase
         ProfilesViewModel = new ProfilesViewModel(_profileManager, _configManager, _singBoxManager);
         GroupsViewModel = new GroupsViewModel(_singBoxManager);
         ConnectionsViewModel = new ConnectionsViewModel(_singBoxManager);
-        SettingsViewModel = new SettingsViewModel(_configManager, _profileManager, _kernelManager, _preferencesService, _localizationService, _themeService, new StartupService());
+        var appUpdateService = new AppUpdateService("https://github.com/821869798/carton", null, LogsViewModel.AddLog);
+        SettingsViewModel = new SettingsViewModel(_configManager, _profileManager, _kernelManager, _preferencesService, _localizationService, _themeService, new StartupService(), appUpdateService);
 
         _currentPage = DashboardViewModel;
         LogsViewModel.AddLog("[INFO] Log pipeline initialized");

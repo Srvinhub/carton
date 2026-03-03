@@ -26,6 +26,9 @@ public partial class SettingsViewModel : PageViewModelBase
     private readonly ILocalizationService? _localizationService;
     private readonly IThemeService? _themeService;
     private readonly IStartupService? _startupService;
+    private readonly IAppUpdateService? _appUpdateService;
+    private AppUpdateResult? _pendingAppUpdate;
+    private GitHubReleaseInfo? _latestReleaseInfo;
     private AppPreferences _currentPreferences = new();
     private bool _suppressPreferenceUpdates;
 
@@ -41,6 +44,12 @@ public partial class SettingsViewModel : PageViewModelBase
     private string _selectedTheme = "System";
 
     [ObservableProperty]
+    private string _selectedUpdateChannel = "release";
+
+    [ObservableProperty]
+    private bool _autoCheckAppUpdates = true;
+
+    [ObservableProperty]
     private LanguageOptionViewModel? _selectedLanguage;
 
     partial void OnStartAtLoginChanged(bool value)
@@ -52,6 +61,8 @@ public partial class SettingsViewModel : PageViewModelBase
     partial void OnAutoStartOnLaunchChanged(bool value) => UpdatePreference(p => p.AutoStartOnLaunch = value);
     partial void OnSelectedThemeChanged(string value) => OnThemeChanged(value);
     partial void OnSelectedLanguageChanged(LanguageOptionViewModel? value) => OnLanguageOptionChanged(value);
+    partial void OnSelectedUpdateChannelChanged(string value) => OnUpdateChannelChanged(value);
+    partial void OnAutoCheckAppUpdatesChanged(bool value) => UpdatePreference(p => p.AutoCheckAppUpdates = value);
 
     [ObservableProperty]
     private ObservableCollection<ProfileViewModel> _profiles = new();
@@ -86,13 +97,39 @@ public partial class SettingsViewModel : PageViewModelBase
     [ObservableProperty]
     private string _dataOperationStatus = string.Empty;
 
+    [ObservableProperty]
+    private bool _isCheckingAppUpdate;
+
+    [ObservableProperty]
+    private bool _isDownloadingAppUpdate;
+
+    [ObservableProperty]
+    private bool _isAppUpdateAvailable;
+
+    [ObservableProperty]
+    private bool _isAppUpdateReadyToInstall;
+
+    [ObservableProperty]
+    private double _appUpdateProgress;
+
+    [ObservableProperty]
+    private string _appUpdateStatus = string.Empty;
+
+    [ObservableProperty]
+    private string _latestAvailableVersion = string.Empty;
+
+    [ObservableProperty]
+    private string _currentAppVersion = string.Empty;
+
     public ObservableCollection<string> Themes { get; } = new() { "System", "Light", "Dark" };
     public ObservableCollection<LanguageOptionViewModel> Languages { get; } = new();
+    public ObservableCollection<UpdateChannelOptionViewModel> UpdateChannels { get; } = new();
 
 public SettingsViewModel()
 {
     Title = "Settings";
     Icon = "Settings";
+    InitializeUpdateChannels();
 }
 
 public SettingsViewModel(
@@ -102,7 +139,8 @@ public SettingsViewModel(
     IPreferencesService preferencesService,
     ILocalizationService localizationService,
     IThemeService themeService,
-    IStartupService startupService) : this()
+    IStartupService startupService,
+    IAppUpdateService appUpdateService) : this()
 {
     _configManager = configManager;
     _profileManager = profileManager;
@@ -111,10 +149,12 @@ public SettingsViewModel(
     _localizationService = localizationService;
     _themeService = themeService;
     _startupService = startupService;
+    _appUpdateService = appUpdateService;
     
     _kernelManager.DownloadProgressChanged += OnDownloadProgress;
     _kernelManager.StatusChanged += OnKernelStatusChanged;
     InitializeLanguages();
+    InitializeUpdateChannels();
     UpdateLocalizedTexts();
     if (_localizationService != null)
     {
@@ -129,6 +169,11 @@ public SettingsViewModel(
         await LoadPreferencesAsync();
         await LoadProfilesAsync();
         await RefreshKernelInfoAsync();
+        InitializeAppUpdateState();
+        if (_currentPreferences.AutoCheckAppUpdates)
+        {
+            _ = CheckAppUpdate();
+        }
     }
 
     private void InitializeLanguages()
@@ -145,6 +190,35 @@ public SettingsViewModel(
         }
     }
 
+    private void InitializeUpdateChannels()
+    {
+        UpdateChannels.Clear();
+        UpdateChannels.Add(new UpdateChannelOptionViewModel("release", GetUpdateChannelDisplayName("release")));
+        UpdateChannels.Add(new UpdateChannelOptionViewModel("beta", GetUpdateChannelDisplayName("beta")));
+    }
+
+    private void RefreshUpdateChannelDisplayNames()
+    {
+        if (UpdateChannels.Count == 0)
+        {
+            InitializeUpdateChannels();
+            return;
+        }
+
+        foreach (var option in UpdateChannels)
+        {
+            option.DisplayName = GetUpdateChannelDisplayName(option.Channel);
+        }
+    }
+
+    private void InitializeAppUpdateState()
+    {
+        CurrentAppVersion = _appUpdateService?.CurrentVersion ?? GetString("Common.Unknown", "unknown");
+        LatestAvailableVersion = string.Empty;
+        AppUpdateStatus = string.Empty;
+        SelectedUpdateChannel = UpdateChannelToString(_currentPreferences.UpdateChannel);
+    }
+
     private void UpdateLocalizedTexts()
     {
         if (_localizationService == null)
@@ -158,6 +232,8 @@ public SettingsViewModel(
         {
             KernelVersion = GetString("Settings.Kernel.NotInstalled", "Not installed");
         }
+
+        RefreshUpdateChannelDisplayNames();
     }
 
     private async Task LoadPreferencesAsync()
@@ -176,6 +252,8 @@ public SettingsViewModel(
         var theme = NormalizeThemeName(_currentPreferences.Theme);
         SelectedTheme = theme;
         SelectedLanguage = Languages.FirstOrDefault(l => l.Language == _currentPreferences.Language) ?? Languages.FirstOrDefault();
+        SelectedUpdateChannel = UpdateChannelToString(_currentPreferences.UpdateChannel);
+        AutoCheckAppUpdates = _currentPreferences.AutoCheckAppUpdates;
         _suppressPreferenceUpdates = false;
         _localizationService?.SetLanguage(_currentPreferences.Language);
         _startupService?.ApplyStartAtLoginPreference(StartAtLogin);
@@ -391,9 +469,139 @@ public SettingsViewModel(
         AutoStartOnLaunch = _currentPreferences.AutoStartOnLaunch;
         SelectedTheme = _currentPreferences.Theme;
         SelectedLanguage = Languages.FirstOrDefault(l => l.Language == _currentPreferences.Language) ?? Languages.FirstOrDefault();
+        SelectedUpdateChannel = UpdateChannelToString(_currentPreferences.UpdateChannel);
+        AutoCheckAppUpdates = _currentPreferences.AutoCheckAppUpdates;
         _suppressPreferenceUpdates = false;
         _localizationService?.SetLanguage(_currentPreferences.Language);
         await PersistPreferencesAsync();
+    }
+
+    [RelayCommand]
+    private async Task CheckAppUpdate()
+    {
+        if (_appUpdateService == null)
+        {
+            AppUpdateStatus = GetString("Settings.Update.Status.Unsupported", "Update service unavailable");
+            return;
+        }
+
+        if (IsCheckingAppUpdate)
+        {
+            return;
+        }
+
+        IsCheckingAppUpdate = true;
+        AppUpdateStatus = GetString("Settings.Update.Status.Checking", "Checking for updates...");
+        try
+        {
+            var latestRelease = await _appUpdateService.GetLatestReleaseInfoAsync(SelectedUpdateChannel);
+            if (latestRelease != null)
+            {
+                _latestReleaseInfo = latestRelease;
+                LatestAvailableVersion = latestRelease.Version;
+            }
+
+            var result = await _appUpdateService.CheckForUpdatesAsync(SelectedUpdateChannel);
+            if (result == null)
+            {
+                _pendingAppUpdate = null;
+                IsAppUpdateAvailable = false;
+                IsAppUpdateReadyToInstall = false;
+                AppUpdateProgress = 0;
+                AppUpdateStatus = GetString("Settings.Update.Status.Latest", "Already up to date");
+                return;
+            }
+
+            _pendingAppUpdate = result;
+            _latestReleaseInfo = result.ReleaseInfo;
+            LatestAvailableVersion = result.Version;
+            IsAppUpdateAvailable = true;
+            IsAppUpdateReadyToInstall = false;
+            AppUpdateProgress = 0;
+            AppUpdateStatus = GetString("Settings.Update.Status.Available", "New version available");
+        }
+        catch (Exception ex)
+        {
+            _pendingAppUpdate = null;
+            IsAppUpdateAvailable = false;
+            IsAppUpdateReadyToInstall = false;
+            AppUpdateStatus = $"{GetString("Settings.Update.Status.Error", "Update failed")}: {ex.Message}";
+        }
+        finally
+        {
+            IsCheckingAppUpdate = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task DownloadAppUpdate()
+    {
+        if (_appUpdateService == null)
+        {
+            AppUpdateStatus = GetString("Settings.Update.Status.Unsupported", "Update service unavailable");
+            return;
+        }
+
+        if (_pendingAppUpdate == null)
+        {
+            await CheckAppUpdate();
+            if (_pendingAppUpdate == null)
+            {
+                return;
+            }
+        }
+
+        if (IsDownloadingAppUpdate)
+        {
+            return;
+        }
+
+        IsDownloadingAppUpdate = true;
+        IsAppUpdateReadyToInstall = false;
+        AppUpdateStatus = GetString("Settings.Update.Status.Downloading", "Downloading update...");
+        var progress = new Progress<int>(value => AppUpdateProgress = value);
+
+        try
+        {
+            await _appUpdateService.DownloadUpdateAsync(_pendingAppUpdate, SelectedUpdateChannel, progress);
+            IsAppUpdateReadyToInstall = true;
+            AppUpdateStatus = GetString("Settings.Update.Status.Ready", "Update downloaded. Restart to apply.");
+        }
+        catch (Exception ex)
+        {
+            IsAppUpdateReadyToInstall = false;
+            AppUpdateStatus = $"{GetString("Settings.Update.Status.Error", "Update failed")}: {ex.Message}";
+        }
+        finally
+        {
+            IsDownloadingAppUpdate = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ApplyAppUpdate()
+    {
+        if (_appUpdateService == null)
+        {
+            AppUpdateStatus = GetString("Settings.Update.Status.Unsupported", "Update service unavailable");
+            return;
+        }
+
+        if (!IsAppUpdateReadyToInstall)
+        {
+            AppUpdateStatus = GetString("Settings.Update.Status.DownloadFirst", "Download the update first.");
+            return;
+        }
+
+        try
+        {
+            AppUpdateStatus = GetString("Settings.Update.Status.Applying", "Restarting to apply update...");
+            await _appUpdateService.RestartToApplyDownloadedUpdateAsync();
+        }
+        catch (Exception ex)
+        {
+            AppUpdateStatus = $"{GetString("Settings.Update.Status.Error", "Update failed")}: {ex.Message}";
+        }
     }
 
     [RelayCommand]
@@ -467,6 +675,19 @@ public SettingsViewModel(
         UpdatePreference(p => p.Language = value.Language);
     }
 
+    private void OnUpdateChannelChanged(string value)
+    {
+        var normalized = NormalizeUpdateChannel(value);
+        var parsed = ParseUpdateChannel(normalized);
+        if (_suppressPreferenceUpdates)
+        {
+            _currentPreferences.UpdateChannel = parsed;
+            return;
+        }
+
+        UpdatePreference(p => p.UpdateChannel = parsed);
+    }
+
     private void OnThemeChanged(string value)
     {
         var normalized = NormalizeThemeName(value);
@@ -485,6 +706,13 @@ public SettingsViewModel(
         return string.IsNullOrWhiteSpace(value) ? fallback : value;
     }
 
+    private string GetUpdateChannelDisplayName(string channel)
+    {
+        return string.Equals(channel, "beta", StringComparison.OrdinalIgnoreCase)
+            ? GetString("Settings.Update.Channel.BetaLabel", "Beta (preview)")
+            : GetString("Settings.Update.Channel.ReleaseLabel", "Release (stable)");
+    }
+
     private static string NormalizeThemeName(string? theme)
     {
         if (string.IsNullOrWhiteSpace(theme))
@@ -500,6 +728,26 @@ public SettingsViewModel(
         };
     }
 
+    private static string NormalizeUpdateChannel(string? channel)
+    {
+        if (string.Equals(channel, "beta", StringComparison.OrdinalIgnoreCase))
+        {
+            return "beta";
+        }
+
+        return "release";
+    }
+
+    private static AppUpdateChannel ParseUpdateChannel(string? channel)
+    {
+        return string.Equals(channel, "beta", StringComparison.OrdinalIgnoreCase)
+            ? AppUpdateChannel.Beta
+            : AppUpdateChannel.Release;
+    }
+
+    private static string UpdateChannelToString(AppUpdateChannel channel)
+        => channel == AppUpdateChannel.Beta ? "beta" : "release";
+
     private static AppPreferences CopyPreferences(AppPreferences preferences)
     {
         return new AppPreferences
@@ -507,7 +755,9 @@ public SettingsViewModel(
             StartAtLogin = preferences.StartAtLogin,
             AutoStartOnLaunch = preferences.AutoStartOnLaunch,
             Theme = preferences.Theme,
-            Language = preferences.Language
+            Language = preferences.Language,
+            UpdateChannel = preferences.UpdateChannel,
+            AutoCheckAppUpdates = preferences.AutoCheckAppUpdates
         };
     }
 
@@ -789,4 +1039,18 @@ public class LanguageOptionViewModel : ObservableObject
     }
 
     public override string ToString() => DisplayName;
+}
+
+public partial class UpdateChannelOptionViewModel : ObservableObject
+{
+    public string Channel { get; }
+
+    [ObservableProperty]
+    private string _displayName;
+
+    public UpdateChannelOptionViewModel(string channel, string displayName)
+    {
+        Channel = channel;
+        _displayName = displayName;
+    }
 }
