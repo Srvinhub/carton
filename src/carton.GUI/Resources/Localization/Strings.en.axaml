@@ -171,7 +171,7 @@
 
 	<x:String x:Key="Settings.Section.About">About</x:String>
 	<x:String x:Key="Settings.About.Name">Carton</x:String>
-	<x:String x:Key="Settings.About.Version">Version 1.0.0</x:String>
+	<x:String x:Key="Settings.About.Version">Version</x:String>
 	<x:String x:Key="Settings.About.Description">A cross-platform proxy client powered by sing-box</x:String>
 
 	<x:String x:Key="Common.Unknown">unknown</x:String>

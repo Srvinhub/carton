@@ -106,8 +106,15 @@ public sealed class AppUpdateService : IAppUpdateService
     {
         get
         {
-            using var manager = CreateManager(_stagedChannel);
-            return manager.IsUpdatePendingRestart;
+            var manager = CreateManager(_stagedChannel);
+            try
+            {
+                return manager.UpdatePendingRestart != null;
+            }
+            finally
+            {
+                DisposeManager(manager);
+            }
         }
     }
 
@@ -129,21 +136,28 @@ public sealed class AppUpdateService : IAppUpdateService
             return null;
         }
 
-        using var manager = CreateManager(channel);
-        Log($"Checking Velopack feed for updates (channel={channel})");
-
-        var info = await manager.CheckForUpdatesAsync().ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-
-        if (info?.TargetFullRelease == null)
+        var manager = CreateManager(channel);
+        try
         {
-            _stagedRelease = manager.UpdatePendingRestart;
-            Log("Velopack feed returned no updates.");
-            return null;
-        }
+            Log($"Checking Velopack feed for updates (channel={channel})");
 
-        var version = info.TargetFullRelease.Version?.ToString() ?? releaseInfo.Version;
-        return new AppUpdateResult(version, releaseInfo.Body, channel, info, releaseInfo);
+            var info = await manager.CheckForUpdatesAsync().ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (info?.TargetFullRelease == null)
+            {
+                _stagedRelease = manager.UpdatePendingRestart;
+                Log("Velopack feed returned no updates.");
+                return null;
+            }
+
+            var version = info.TargetFullRelease.Version?.ToString() ?? releaseInfo.Version;
+            return new AppUpdateResult(version, releaseInfo.Body, channel, info, releaseInfo);
+        }
+        finally
+        {
+            DisposeManager(manager);
+        }
     }
 
     public async Task<GitHubReleaseInfo?> GetLatestReleaseInfoAsync(
@@ -236,24 +250,38 @@ public sealed class AppUpdateService : IAppUpdateService
             throw new ArgumentNullException(nameof(update));
         }
 
-        using var manager = CreateManager(channel);
-        Log($"Downloading update {update.Version} (channel={channel})");
+        var manager = CreateManager(channel);
+        try
+        {
+            Log($"Downloading update {update.Version} (channel={channel})");
 
-        await manager.DownloadUpdatesAsync(
-            update.UpdateInfo,
-            percent => progress?.Report(percent),
-            cancellationToken).ConfigureAwait(false);
+            await manager.DownloadUpdatesAsync(
+                update.UpdateInfo,
+                percent => progress?.Report(percent),
+                cancellationToken).ConfigureAwait(false);
 
-        _stagedRelease = update.UpdateInfo.TargetFullRelease;
-        _stagedChannel = channel;
+            _stagedRelease = update.UpdateInfo.TargetFullRelease;
+            _stagedChannel = channel;
+        }
+        finally
+        {
+            DisposeManager(manager);
+        }
     }
 
     public async Task RestartToApplyDownloadedUpdateAsync(bool silentRestart = false)
     {
         if (_stagedRelease == null)
         {
-            using var manager = CreateManager(_stagedChannel);
-            _stagedRelease = manager.UpdatePendingRestart;
+            var manager = CreateManager(_stagedChannel);
+            try
+            {
+                _stagedRelease = manager.UpdatePendingRestart;
+            }
+            finally
+            {
+                DisposeManager(manager);
+            }
         }
 
         if (_stagedRelease == null)
@@ -262,12 +290,19 @@ public sealed class AppUpdateService : IAppUpdateService
         }
 
         Log($"Applying update {_stagedRelease.Version} (restart={true})");
-        using var updater = CreateManager(_stagedChannel);
-        await updater.WaitExitThenApplyUpdatesAsync(
-            _stagedRelease,
-            true,
-            silentRestart,
-            Array.Empty<string>()).ConfigureAwait(false);
+        var updater = CreateManager(_stagedChannel);
+        try
+        {
+            await updater.WaitExitThenApplyUpdatesAsync(
+                _stagedRelease,
+                true,
+                silentRestart,
+                Array.Empty<string>()).ConfigureAwait(false);
+        }
+        finally
+        {
+            DisposeManager(updater);
+        }
     }
 
     private UpdateManager CreateManager(string? channel)
@@ -285,6 +320,25 @@ public sealed class AppUpdateService : IAppUpdateService
 
         var source = new GithubSource(_repositoryUrl, _token ?? string.Empty, normalizedChannel == "beta", null);
         return new UpdateManager(source, options, _locator.Value);
+    }
+
+    private static void DisposeManager(UpdateManager? manager)
+    {
+        if (manager == null)
+        {
+            return;
+        }
+
+        if (manager is IAsyncDisposable asyncDisposable)
+        {
+            asyncDisposable.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            return;
+        }
+
+        if (manager is IDisposable disposable)
+        {
+            disposable.Dispose();
+        }
     }
 
     private void Log(string message)

@@ -170,7 +170,7 @@
 
 	<x:String x:Key="Settings.Section.About">关于</x:String>
 	<x:String x:Key="Settings.About.Name">Carton</x:String>
-	<x:String x:Key="Settings.About.Version">版本 1.0.0</x:String>
+	<x:String x:Key="Settings.About.Version">版本</x:String>
 	<x:String x:Key="Settings.About.Description">基于 sing-box 的跨平台代理客户端</x:String>
 
 	<x:String x:Key="Common.Unknown">未知</x:String>

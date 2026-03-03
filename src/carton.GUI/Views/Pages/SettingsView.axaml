@@ -81,10 +81,15 @@
             <ComboBox Grid.Column="1"
                       ItemsSource="{Binding UpdateChannels}"
                       SelectedValue="{Binding SelectedUpdateChannel}"
-                      SelectedValuePath="Channel"
-                      DisplayMemberPath="DisplayName"
+                      SelectedValueBinding="{Binding Channel}"
                       HorizontalAlignment="Left"
-                      MinWidth="150"/>
+                      MinWidth="150">
+              <ComboBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding DisplayName}"/>
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
           </Grid>
 
           <CheckBox Content="{DynamicResource Settings.Update.AutoCheck}"
@@ -187,7 +192,13 @@
       <Border Classes="card" Padding="16">
         <StackPanel Spacing="8">
           <TextBlock Text="{DynamicResource Settings.About.Name}" FontSize="16" FontWeight="SemiBold"/>
-          <TextBlock Text="{DynamicResource Settings.About.Version}" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+          <TextBlock Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}">
+            <TextBlock.Inlines>
+              <Run Text="{DynamicResource Settings.About.Version}"/>
+              <Run Text=": "/>
+              <Run Text="{Binding CurrentAppVersion}"/>
+            </TextBlock.Inlines>
+          </TextBlock>
           <TextBlock Text="{DynamicResource Settings.About.Description}" 
                      Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
         </StackPanel>
