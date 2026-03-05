@@ -132,12 +132,29 @@ public class KernelManager : IKernelManager
     {
         try
         {
-            var response = await _httpClient.GetStringAsync(GitHubApiUrl);
-            using var document = JsonDocument.Parse(response);
-            if (document.RootElement.TryGetProperty("tag_name", out var tagElement) &&
-                tagElement.ValueKind == JsonValueKind.String)
+            // Try API first
+            try
             {
-                return tagElement.GetString();
+                var response = await _httpClient.GetStringAsync(GitHubApiUrl);
+                using var document = JsonDocument.Parse(response);
+                if (document.RootElement.TryGetProperty("tag_name", out var tagElement) &&
+                    tagElement.ValueKind == JsonValueKind.String)
+                {
+                    return tagElement.GetString();
+                }
+            }
+            catch
+            {
+                // Fallback: follow the /releases/latest redirect to get the tag
+                using var request = new HttpRequestMessage(HttpMethod.Head, "https://github.com/SagerNet/sing-box/releases/latest");
+                using var response = await _httpClient.SendAsync(request);
+                var finalUrl = response.RequestMessage?.RequestUri?.ToString();
+
+                if (finalUrl != null && finalUrl.Contains("/releases/tag/"))
+                {
+                    var version = finalUrl.Substring(finalUrl.LastIndexOf('/') + 1);
+                    return version;
+                }
             }
 
             return null;
@@ -224,6 +241,31 @@ public class KernelManager : IKernelManager
     private async Task ExtractArchiveAsync(string archivePath, string destination)
     {
         var platform = PlatformInfo.Current;
+
+        try
+        {
+            var targetExe = Path.Combine(destination, platform.OS == "windows" ? "sing-box.exe" : "sing-box");
+            var processes = Process.GetProcessesByName("sing-box");
+            foreach (var p in processes)
+            {
+                try
+                {
+                    if (string.Equals(p.MainModule?.FileName, targetExe, StringComparison.OrdinalIgnoreCase))
+                    {
+                        p.Kill();
+                        await p.WaitForExitAsync();
+                    }
+                }
+                catch { } // Ignore access denied
+            }
+
+            // Also try to rename/delete existing if locked (Windows allows renaming running exe)
+            if (File.Exists(targetExe))
+            {
+                File.Delete(targetExe);
+            }
+        }
+        catch { }
 
         if (platform.OS == "windows")
         {
