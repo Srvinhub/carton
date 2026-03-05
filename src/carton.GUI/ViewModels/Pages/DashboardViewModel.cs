@@ -542,38 +542,69 @@ public partial class DashboardViewModel : PageViewModelBase
                 return null;
             }
 
-            var inbounds = new JsonArray
+            var inbounds = root["inbounds"] as JsonArray ?? new JsonArray();
+
+            // 找到已有的 mixed inbound，只更新需要的字段
+            JsonObject? mixedInbound = null;
+            foreach (var node in inbounds)
             {
-                new JsonObject
+                if (node is JsonObject obj && obj["type"]?.GetValue<string>() == "mixed")
                 {
-                    ["type"] = "mixed",
-                    ["tag"] = "mixed-in",
-                    ["listen"] = AllowLanConnections ? "0.0.0.0" : "127.0.0.1",
-                    ["listen_port"] = port,
-                    ["set_system_proxy"] = EnableSystemProxy
+                    mixedInbound = obj;
+                    break;
                 }
-            };
+            }
+            if (mixedInbound == null)
+            {
+                mixedInbound = new JsonObject { ["type"] = "mixed", ["tag"] = "mixed-in" };
+                inbounds.Add(mixedInbound);
+            }
+            mixedInbound["listen"] = AllowLanConnections ? "0.0.0.0" : "127.0.0.1";
+            mixedInbound["listen_port"] = port;
+            mixedInbound["set_system_proxy"] = EnableSystemProxy;
 
             if (EnableTunInbound)
             {
-                var tunAddresses = new JsonArray("172.18.0.1/30");
+                var tunAddresses = new JsonArray((JsonNode)"172.18.0.1/30");
                 if (Socket.OSSupportsIPv6)
                 {
                     tunAddresses.Add((JsonNode)"fdfe:dcba:9876::1/126");
                 }
 
-                inbounds.Add(new JsonObject
+                // 找到已有的 tun inbound，只更新需要的字段
+                JsonObject? tunInbound = null;
+                foreach (var node in inbounds)
                 {
-                    ["type"] = "tun",
-                    ["tag"] = "tun-in",
-                    ["address"] = tunAddresses,
-                    ["auto_route"] = true,
-                    ["strict_route"] = true,
-                    ["route_exclude_address"] = new JsonArray(
-                        "10.0.0.0/8",
-                        "192.168.0.0/16",
-                        "fe80::/10")
-                });
+                    if (node is JsonObject obj && obj["type"]?.GetValue<string>() == "tun")
+                    {
+                        tunInbound = obj;
+                        break;
+                    }
+                }
+                if (tunInbound == null)
+                {
+                    tunInbound = new JsonObject { ["type"] = "tun", ["tag"] = "tun-in" };
+                    inbounds.Add(tunInbound);
+                }
+                tunInbound["address"] = tunAddresses;
+                tunInbound["auto_route"] = true;
+                tunInbound["strict_route"] = true;
+                tunInbound["route_exclude_address"] = new JsonArray(
+                    "10.0.0.0/8",
+                    "192.168.0.0/16",
+                    "fe80::/10");
+            }
+            else
+            {
+                // 如果禁用 tun，移除已有的 tun inbound
+                for (var i = inbounds.Count - 1; i >= 0; i--)
+                {
+                    if (inbounds[i] is JsonObject o && o["type"]?.GetValue<string>() == "tun")
+                    {
+                        inbounds.RemoveAt(i);
+                        break;
+                    }
+                }
             }
 
             root["inbounds"] = inbounds;
@@ -581,18 +612,15 @@ public partial class DashboardViewModel : PageViewModelBase
             var experimental = root["experimental"] as JsonObject ?? new JsonObject();
             root["experimental"] = experimental;
 
-            experimental["clash_api"] = new JsonObject
-            {
-                ["external_controller"] = $"{ClashApiHost}:{ClashApiPort}",
-                ["external_ui"] = "dashboard"
-            };
+            var clashApi = experimental["clash_api"] as JsonObject ?? new JsonObject();
+            clashApi["external_controller"] = $"{ClashApiHost}:{ClashApiPort}";
+            clashApi["external_ui"] = "dashboard";
+            experimental["clash_api"] = clashApi;
 
-            experimental["cache_file"] = new JsonObject
-            {
-                ["enabled"] = true,
-                ["store_fakeip"] = true,
-                ["store_rdrc"] = true
-            };
+            var cacheFile = experimental["cache_file"] as JsonObject ?? new JsonObject();
+            cacheFile["enabled"] = true;
+            cacheFile["store_fakeip"] = true;
+            experimental["cache_file"] = cacheFile;
 
             var runtimeDirectory = _configManager!.RuntimeConfigDirectory;
             Directory.CreateDirectory(runtimeDirectory);
