@@ -8,6 +8,7 @@ namespace carton.Core.Services;
 public static class HttpClientFactory
 {
     private static HttpClient _localApi = null!;
+    private static string _appVersion = "1.0";
     public static string LocalApiAddress { get; private set; } = string.Empty;
     public static int LocalApiPort { get; private set; }
     public static string? LocalApiSecret { get; private set; }
@@ -15,6 +16,18 @@ public static class HttpClientFactory
     static HttpClientFactory()
     {
         UpdateLocalApi("127.0.0.1", 9090, null);
+    }
+
+    /// <summary>
+    /// Call once at application startup to set the app version used in User-Agent.
+    /// Must be called before External is first accessed.
+    /// </summary>
+    public static void Initialize(string appVersion)
+    {
+        if (!string.IsNullOrWhiteSpace(appVersion))
+        {
+            _appVersion = appVersion;
+        }
     }
 
     /// <summary>
@@ -43,8 +56,10 @@ public static class HttpClientFactory
 
     /// <summary>
     /// Client for external requests (GitHub, remote config downloads, etc.).
+    /// Lazy-created so that Initialize(appVersion) takes effect before first use.
     /// </summary>
-    public static HttpClient External { get; } = CreateExternalClient();
+    private static HttpClient? _external;
+    public static HttpClient External => _external ??= CreateExternalClient();
 
     private static HttpClient CreateExternalClient()
     {
@@ -52,7 +67,7 @@ public static class HttpClientFactory
         {
             Timeout = TimeSpan.FromSeconds(30)
         };
-        client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Carton/1.0");
+        client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", $"carton/{_appVersion} sing-box/1.13.0");
         return client;
     }
 }

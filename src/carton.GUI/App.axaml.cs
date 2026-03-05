@@ -13,6 +13,7 @@ using carton.Views;
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 
 namespace carton;
 
@@ -27,6 +28,15 @@ public partial class App : Application
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
+        var appVersion = Assembly.GetEntryAssembly()
+            ?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion
+            ?? Assembly.GetEntryAssembly()?.GetName().Version?.ToString()
+            ?? "1.0";
+        // strip build metadata (e.g. "+sha")
+        var plusIndex = appVersion.IndexOf('+');
+        if (plusIndex >= 0) appVersion = appVersion[..plusIndex];
+        HttpClientFactory.Initialize(appVersion);
         var preferences = LoadOrCreatePreferences();
         LocalizationService.Instance.Initialize(preferences.Language);
         ThemeService.Instance.Initialize(preferences.Theme);
