@@ -54,6 +54,9 @@ public partial class SettingsViewModel : PageViewModelBase
     [ObservableProperty]
     private LanguageOptionViewModel? _selectedLanguage;
 
+    [ObservableProperty]
+    private DownloadMirror _selectedKernelDownloadMirror = DownloadMirror.GitHub;
+
     partial void OnStartAtLoginChanged(bool value)
     {
         _startupService?.ApplyStartAtLoginPreference(value);
@@ -65,6 +68,7 @@ public partial class SettingsViewModel : PageViewModelBase
     partial void OnSelectedLanguageChanged(LanguageOptionViewModel? value) => OnLanguageOptionChanged(value);
     partial void OnSelectedUpdateChannelChanged(string value) => OnUpdateChannelChanged(value);
     partial void OnAutoCheckAppUpdatesChanged(bool value) => UpdatePreference(p => p.AutoCheckAppUpdates = value);
+    partial void OnSelectedKernelDownloadMirrorChanged(DownloadMirror value) => UpdatePreference(p => p.KernelDownloadMirror = value);
 
     [ObservableProperty]
     private ObservableCollection<ProfileViewModel> _profiles = new();
@@ -124,6 +128,7 @@ public partial class SettingsViewModel : PageViewModelBase
     private string _currentAppVersion = string.Empty;
 
     public ObservableCollection<AppTheme> Themes { get; } = new(Enum.GetValues<AppTheme>());
+    public ObservableCollection<DownloadMirror> KernelDownloadMirrors { get; } = new(Enum.GetValues<DownloadMirror>());
     public ObservableCollection<LanguageOptionViewModel> Languages { get; } = new();
     public ObservableCollection<UpdateChannelOptionViewModel> UpdateChannels { get; } = new();
 
@@ -256,6 +261,7 @@ public partial class SettingsViewModel : PageViewModelBase
         SelectedLanguage = Languages.FirstOrDefault(l => l.Language == _currentPreferences.Language) ?? Languages.FirstOrDefault();
         SelectedUpdateChannel = UpdateChannelToString(_currentPreferences.UpdateChannel);
         AutoCheckAppUpdates = _currentPreferences.AutoCheckAppUpdates;
+        SelectedKernelDownloadMirror = _currentPreferences.KernelDownloadMirror;
         _suppressPreferenceUpdates = false;
         _localizationService?.SetLanguage(_currentPreferences.Language);
         _startupService?.ApplyStartAtLoginPreference(StartAtLogin);
@@ -314,7 +320,7 @@ public partial class SettingsViewModel : PageViewModelBase
         IsUpdatingKernel = true;
         UpdateStatus = GetString("Settings.Kernel.StartingDownload", "Starting download...");
 
-        var success = await _kernelManager.DownloadAndInstallAsync();
+        var success = await _kernelManager.DownloadAndInstallAsync(null, SelectedKernelDownloadMirror);
 
         IsUpdatingKernel = false;
 
@@ -473,6 +479,7 @@ public partial class SettingsViewModel : PageViewModelBase
         SelectedLanguage = Languages.FirstOrDefault(l => l.Language == _currentPreferences.Language) ?? Languages.FirstOrDefault();
         SelectedUpdateChannel = UpdateChannelToString(_currentPreferences.UpdateChannel);
         AutoCheckAppUpdates = _currentPreferences.AutoCheckAppUpdates;
+        SelectedKernelDownloadMirror = _currentPreferences.KernelDownloadMirror;
         _suppressPreferenceUpdates = false;
         _localizationService?.SetLanguage(_currentPreferences.Language);
         PersistPreferences();

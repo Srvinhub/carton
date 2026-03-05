@@ -22,6 +22,15 @@
                       IsEnabled="{Binding !IsUpdatingKernel}"/>
             </StackPanel>
           </Grid>
+
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+            <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Kernel.Mirror}" VerticalAlignment="Center"/>
+            <ComboBox Grid.Column="1"
+                      ItemsSource="{Binding KernelDownloadMirrors}"
+                      SelectedItem="{Binding SelectedKernelDownloadMirror}"
+                      HorizontalAlignment="Left"
+                      MinWidth="150" />
+          </Grid>
           
           <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" IsVisible="{Binding IsKernelInstalled}">
             <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Kernel.Path}" VerticalAlignment="Center"/>

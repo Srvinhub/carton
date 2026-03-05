@@ -7,7 +7,14 @@ public class AppPreferences
     public AppTheme Theme { get; set; } = AppTheme.System;
     public AppLanguage Language { get; set; } = AppLanguage.English;
     public AppUpdateChannel UpdateChannel { get; set; } = AppUpdateChannel.Release;
+    public DownloadMirror KernelDownloadMirror { get; set; } = DownloadMirror.GitHub;
     public bool AutoCheckAppUpdates { get; set; } = true;
+}
+
+public enum DownloadMirror
+{
+    GitHub,
+    GhProxy
 }
 
 public enum AppTheme

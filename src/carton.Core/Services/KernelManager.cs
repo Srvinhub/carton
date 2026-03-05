@@ -17,7 +17,7 @@ public interface IKernelManager
 
     Task<KernelInfo?> GetInstalledKernelInfoAsync();
     Task<string?> GetLatestVersionAsync();
-    Task<bool> DownloadAndInstallAsync(string? version = null);
+    Task<bool> DownloadAndInstallAsync(string? version = null, DownloadMirror mirror = DownloadMirror.GitHub);
     Task<bool> UninstallAsync();
     Task<bool> CheckKernelAsync();
 }
@@ -165,7 +165,7 @@ public class KernelManager : IKernelManager
         }
     }
 
-    public async Task<bool> DownloadAndInstallAsync(string? version = null)
+    public async Task<bool> DownloadAndInstallAsync(string? version = null, DownloadMirror mirror = DownloadMirror.GitHub)
     {
         try
         {
@@ -181,7 +181,13 @@ public class KernelManager : IKernelManager
             var platform = PlatformInfo.Current;
             var assetName = $"sing-box-{version.TrimStart('v')}-{platform.OS}-{platform.Arch}";
             var archiveExt = platform.OS == "windows" ? ".zip" : ".tar.gz";
-            var downloadUrl = $"{GitHubDownloadUrl}/{version}/{assetName}{archiveExt}";
+            var originalUrl = $"{GitHubDownloadUrl}/{version}/{assetName}{archiveExt}";
+
+            var downloadUrl = mirror switch
+            {
+                DownloadMirror.GhProxy => $"https://gh-proxy.com/{originalUrl}",
+                _ => originalUrl
+            };
 
             var tempFile = Path.Combine(Path.GetTempPath(), $"sing-box{archiveExt}");
 
