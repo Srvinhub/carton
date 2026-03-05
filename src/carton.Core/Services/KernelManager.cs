@@ -10,11 +10,11 @@ public interface IKernelManager
 {
     event EventHandler<DownloadProgress>? DownloadProgressChanged;
     event EventHandler<string>? StatusChanged;
-    
+
     KernelInfo? InstalledKernel { get; }
     bool IsKernelInstalled { get; }
     string KernelPath { get; }
-    
+
     Task<KernelInfo?> GetInstalledKernelInfoAsync();
     Task<string?> GetLatestVersionAsync();
     Task<bool> DownloadAndInstallAsync(string? version = null);
@@ -34,7 +34,7 @@ public class KernelManager : IKernelManager
 {
     private readonly string _binDirectory;
     private readonly string _kernelPath;
-    private readonly HttpClient _httpClient;
+    private readonly HttpClient _httpClient = HttpClientFactory.External;
     private KernelInfo? _installedKernel;
 
     public event EventHandler<DownloadProgress>? DownloadProgressChanged;
@@ -51,9 +51,8 @@ public class KernelManager : IKernelManager
     {
         _binDirectory = Path.Combine(baseDirectory, "bin");
         _kernelPath = GetKernelExecutablePath();
-        _httpClient = new HttpClient();
-        _httpClient.DefaultRequestHeaders.Add("User-Agent", "Carton/1.0");
-        
+
+
         Directory.CreateDirectory(_binDirectory);
     }
 
@@ -161,31 +160,31 @@ public class KernelManager : IKernelManager
             }
 
             StatusChanged?.Invoke(this, $"Downloading sing-box {version}...");
-            
+
             var platform = PlatformInfo.Current;
             var assetName = $"sing-box-{version.TrimStart('v')}-{platform.OS}-{platform.Arch}";
             var archiveExt = platform.OS == "windows" ? ".zip" : ".tar.gz";
             var downloadUrl = $"{GitHubDownloadUrl}/{version}/{assetName}{archiveExt}";
-            
+
             var tempFile = Path.Combine(Path.GetTempPath(), $"sing-box{archiveExt}");
-            
+
             using (var response = await _httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead))
             {
                 response.EnsureSuccessStatusCode();
-                
+
                 var totalBytes = response.Content.Headers.ContentLength ?? 0;
                 var buffer = new byte[8192];
                 var bytesRead = 0L;
-                
+
                 await using var contentStream = await response.Content.ReadAsStreamAsync();
                 await using var fileStream = File.Create(tempFile);
-                
+
                 int read;
                 while ((read = await contentStream.ReadAsync(buffer)) > 0)
                 {
                     await fileStream.WriteAsync(buffer.AsMemory(0, read));
                     bytesRead += read;
-                    
+
                     DownloadProgressChanged?.Invoke(this, new DownloadProgress
                     {
                         BytesReceived = bytesRead,
@@ -196,9 +195,9 @@ public class KernelManager : IKernelManager
             }
 
             StatusChanged?.Invoke(this, "Extracting...");
-            
+
             await ExtractArchiveAsync(tempFile, _binDirectory);
-            
+
             File.Delete(tempFile);
 
             if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -212,7 +211,7 @@ public class KernelManager : IKernelManager
 
             await GetInstalledKernelInfoAsync();
             StatusChanged?.Invoke(this, $"Successfully installed sing-box {version}");
-            
+
             return true;
         }
         catch (Exception ex)
@@ -225,7 +224,7 @@ public class KernelManager : IKernelManager
     private async Task ExtractArchiveAsync(string archivePath, string destination)
     {
         var platform = PlatformInfo.Current;
-        
+
         if (platform.OS == "windows")
         {
             using var archive = ZipFile.OpenRead(archivePath);
@@ -242,7 +241,7 @@ public class KernelManager : IKernelManager
         {
             var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
             Directory.CreateDirectory(tempDir);
-            
+
             using var process = new Process
             {
                 StartInfo = new ProcessStartInfo
@@ -253,16 +252,16 @@ public class KernelManager : IKernelManager
                     CreateNoWindow = true
                 }
             };
-            
+
             process.Start();
             await process.WaitForExitAsync();
-            
+
             var singBoxFile = Directory.GetFiles(tempDir, "sing-box", SearchOption.AllDirectories).FirstOrDefault();
             if (singBoxFile != null)
             {
                 File.Copy(singBoxFile, Path.Combine(destination, "sing-box"), true);
             }
-            
+
             Directory.Delete(tempDir, true);
         }
     }
@@ -275,7 +274,7 @@ public class KernelManager : IKernelManager
             {
                 File.Delete(_kernelPath);
             }
-            
+
             _installedKernel = null;
             StatusChanged?.Invoke(this, "Kernel uninstalled");
             return Task.FromResult(true);

@@ -85,9 +85,12 @@ public partial class MainViewModel : ViewModelBase
     public DashboardViewModel DashboardViewModel { get; }
     public ProfilesViewModel ProfilesViewModel { get; }
     public GroupsViewModel GroupsViewModel { get; }
-    public ConnectionsViewModel ConnectionsViewModel { get; }
     public LogsViewModel LogsViewModel { get; }
-    public SettingsViewModel SettingsViewModel { get; }
+
+    private readonly Lazy<ConnectionsViewModel> _lazyConnectionsViewModel;
+    private readonly Lazy<SettingsViewModel> _lazySettingsViewModel;
+    public ConnectionsViewModel ConnectionsViewModel => _lazyConnectionsViewModel.Value;
+    public SettingsViewModel SettingsViewModel => _lazySettingsViewModel.Value;
     public ILocalizationService Localization => _localizationService;
 
     public bool ShowGlobalStartStop => false;
@@ -124,9 +127,9 @@ public partial class MainViewModel : ViewModelBase
         DashboardViewModel = new DashboardViewModel(_singBoxManager, _profileManager, _configManager, LogsViewModel.AddLog);
         ProfilesViewModel = new ProfilesViewModel(_profileManager, _configManager, _singBoxManager);
         GroupsViewModel = new GroupsViewModel(_singBoxManager);
-        ConnectionsViewModel = new ConnectionsViewModel(_singBoxManager);
+        _lazyConnectionsViewModel = new Lazy<ConnectionsViewModel>(() => new ConnectionsViewModel(_singBoxManager));
         var appUpdateService = new AppUpdateService("https://github.com/821869798/carton", null, LogsViewModel.AddLog);
-        SettingsViewModel = new SettingsViewModel(_configManager, _profileManager, _kernelManager, _preferencesService, _localizationService, _themeService, new StartupService(), appUpdateService);
+        _lazySettingsViewModel = new Lazy<SettingsViewModel>(() => new SettingsViewModel(_configManager, _profileManager, _kernelManager, _preferencesService, _localizationService, _themeService, new StartupService(), appUpdateService));
 
         _currentPage = DashboardViewModel;
         LogsViewModel.AddLog("[INFO] Log pipeline initialized");
@@ -218,6 +221,7 @@ public partial class MainViewModel : ViewModelBase
             };
             OnPropertyChanged(nameof(ShowStartButton));
             OnPropertyChanged(nameof(ShowStopButton));
+            ConnectionsViewModel.OnServiceStatusChanged(status == ServiceStatus.Running);
         });
     }
 
@@ -251,6 +255,15 @@ public partial class MainViewModel : ViewModelBase
         if (value == NavigationPage.Groups)
         {
             GroupsViewModel.OnNavigatedTo();
+        }
+
+        if (value == NavigationPage.Connections)
+        {
+            ConnectionsViewModel.OnNavigatedTo();
+        }
+        else
+        {
+            ConnectionsViewModel.OnNavigatedFrom();
         }
 
         if (value == NavigationPage.Dashboard)
@@ -288,7 +301,7 @@ public partial class MainViewModel : ViewModelBase
         {
             var selectedId = await _profileManager.GetSelectedProfileIdAsync();
             string configPath;
-            
+
             if (selectedId > 0)
             {
                 var profile = await _profileManager.GetAsync(selectedId);
@@ -356,11 +369,7 @@ public partial class MainViewModel : ViewModelBase
         LogsViewModel.AddLog($"[INFO] {downloadingMessage}: {profile.Name} ({profile.Id})");
         try
         {
-            using var client = new HttpClient
-            {
-                Timeout = TimeSpan.FromSeconds(30)
-            };
-            client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", CartonApplicationInfo.UserAgent);
+            var client = HttpClientFactory.External;
             var content = await client.GetStringAsync(profile.Url);
             if (string.IsNullOrWhiteSpace(content))
             {
@@ -405,11 +414,11 @@ public partial class MainViewModel : ViewModelBase
     {
         IsDownloadingKernel = true;
         DownloadStatus = _localizationService["Status.KernelDownloading"];
-        
+
         var success = await _kernelManager.DownloadAndInstallAsync();
-        
+
         IsDownloadingKernel = false;
-        
+
         if (success)
         {
             IsKernelInstalled = true;
@@ -471,18 +480,7 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    private static string FormatBytes(long bytes)
-    {
-        string[] suffixes = { "B", "KB", "MB", "GB", "TB" };
-        int i = 0;
-        double dblSByte = bytes;
-        while (dblSByte >= 1024 && i < suffixes.Length - 1)
-        {
-            dblSByte /= 1024;
-            i++;
-        }
-        return $"{dblSByte:0.##} {suffixes[i]}";
-    }
+    private static string FormatBytes(long bytes) => FormatHelper.FormatBytes(bytes);
 
     private async Task TryAutoStartAsync()
     {

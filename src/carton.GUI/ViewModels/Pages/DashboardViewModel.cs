@@ -26,7 +26,7 @@ public partial class DashboardViewModel : PageViewModelBase
     private readonly IConfigManager? _configManager;
     private readonly Action<string>? _logWriter;
     private readonly ILocalizationService _localizationService;
-    private readonly HttpClient _clashHttpClient;
+    private readonly HttpClient _clashHttpClient = HttpClientFactory.LocalApi;
     private string? _currentClashMode;
     private ProfileRuntimeOptions _runtimeOptions = new();
     private bool _suppressRuntimeOptionUpdates;
@@ -111,11 +111,6 @@ public partial class DashboardViewModel : PageViewModelBase
         Title = "Dashboard";
         Icon = "Home";
         _localizationService = LocalizationService.Instance;
-        _clashHttpClient = new HttpClient
-        {
-            BaseAddress = new Uri($"http://{ClashApiHost}:{ClashApiPort}/"),
-            Timeout = TimeSpan.FromSeconds(3)
-        };
         InitializeClashModeOptions();
         _localizationService.LanguageChanged += (_, _) =>
         {
@@ -433,11 +428,7 @@ public partial class DashboardViewModel : PageViewModelBase
 
         try
         {
-            using var client = new HttpClient
-            {
-                Timeout = TimeSpan.FromSeconds(30)
-            };
-            client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", CartonApplicationInfo.UserAgent);
+            var client = HttpClientFactory.External;
             var content = await client.GetStringAsync(profile.Url);
             if (string.IsNullOrWhiteSpace(content))
             {
@@ -739,19 +730,7 @@ public partial class DashboardViewModel : PageViewModelBase
         }
     }
 
-    private static string FormatBytes(long bytes)
-    {
-        string[] suffixes = { "B", "KB", "MB", "GB", "TB" };
-        var index = 0;
-        double value = bytes;
-        while (value >= 1024 && index < suffixes.Length - 1)
-        {
-            value /= 1024;
-            index++;
-        }
-
-        return $"{value:0.##} {suffixes[index]}";
-    }
+    private static string FormatBytes(long bytes) => FormatHelper.FormatBytes(bytes);
 
     private bool TryGetValidatedPort(out int port, out string error)
     {

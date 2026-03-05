@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using carton.Core.Services;
 using carton.Core.Models;
+using carton.Core.Utilities;
 using carton.GUI.Models;
 
 namespace carton.ViewModels;
@@ -27,6 +28,7 @@ public partial class ConnectionsViewModel : PageViewModelBase
 
     private readonly DispatcherTimer? _refreshTimer;
     private bool _isRefreshing;
+    private bool _isOnPage;
 
     public ConnectionsViewModel()
     {
@@ -42,8 +44,53 @@ public partial class ConnectionsViewModel : PageViewModelBase
             Interval = TimeSpan.FromSeconds(2)
         };
         _refreshTimer.Tick += async (_, _) => await RefreshAsync();
-        _refreshTimer.Start();
-        _ = RefreshAsync();
+        // Timer is NOT started here — it starts when user navigates to this page
+    }
+
+    /// <summary>
+    /// Called when the user navigates to the Connections page.
+    /// </summary>
+    public void OnNavigatedTo()
+    {
+        _isOnPage = true;
+        if (_singBoxManager is { IsRunning: true })
+        {
+            _refreshTimer?.Start();
+            _ = RefreshAsync();
+        }
+    }
+
+    /// <summary>
+    /// Called when the user navigates away from the Connections page.
+    /// </summary>
+    public void OnNavigatedFrom()
+    {
+        _isOnPage = false;
+        _refreshTimer?.Stop();
+    }
+
+    /// <summary>
+    /// Called when sing-box status changes. Starts/stops polling accordingly.
+    /// </summary>
+    public void OnServiceStatusChanged(bool isRunning)
+    {
+        if (isRunning && _isOnPage)
+        {
+            _refreshTimer?.Start();
+            _ = RefreshAsync();
+        }
+        else
+        {
+            _refreshTimer?.Stop();
+            if (!isRunning)
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    Connections.Clear();
+                    ConnectionCount = 0;
+                });
+            }
+        }
     }
 
     [RelayCommand]
@@ -70,7 +117,7 @@ public partial class ConnectionsViewModel : PageViewModelBase
         _isRefreshing = true;
 
         var connections = await _singBoxManager.GetConnectionsAsync();
-        
+
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
             Connections.Clear();
@@ -94,18 +141,7 @@ public partial class ConnectionsViewModel : PageViewModelBase
         _isRefreshing = false;
     }
 
-    private static string FormatBytes(long bytes)
-    {
-        string[] suffixes = { "B", "KB", "MB", "GB" };
-        int i = 0;
-        double dblSByte = bytes;
-        while (dblSByte >= 1024 && i < suffixes.Length - 1)
-        {
-            dblSByte /= 1024;
-            i++;
-        }
-        return $"{dblSByte:0.##} {suffixes[i]}";
-    }
+    private static string FormatBytes(long bytes) => FormatHelper.FormatBytes(bytes);
 
     private static string FormatText(params string?[] values)
     {

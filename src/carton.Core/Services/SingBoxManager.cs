@@ -44,7 +44,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
     private readonly string _workingDirectory;
     private Process? _process;
     private readonly ServiceState _state = new();
-    private readonly HttpClient _httpClient;
+    private readonly HttpClient _httpClient = HttpClientFactory.LocalApi;
     private readonly string _apiAddress;
     private readonly int _apiPort;
     private bool _disposed;
@@ -103,7 +103,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         _workingDirectory = workingDirectory;
         _apiPort = apiPort;
         _apiAddress = $"http://127.0.0.1:{apiPort}";
-        _httpClient = new HttpClient();
+
 
         Directory.CreateDirectory(_workingDirectory);
         Directory.CreateDirectory(Path.Combine(_workingDirectory, "logs"));
@@ -412,32 +412,32 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             }
 
             try
+            {
+                var endpoint = $"{_apiAddress}/proxies/{Uri.EscapeDataString(tag)}/delay?timeout={timeoutMs}&url={urlParam}";
+                using var response = await _httpClient.GetAsync(endpoint);
+                if (!response.IsSuccessStatusCode)
                 {
-                    var endpoint = $"{_apiAddress}/proxies/{Uri.EscapeDataString(tag)}/delay?timeout={timeoutMs}&url={urlParam}";
-                    using var response = await _httpClient.GetAsync(endpoint);
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        result[tag] = -1;
-                        continue;
-                    }
-
-                    var payload = await response.Content.ReadAsStringAsync();
-                    using var document = JsonDocument.Parse(payload);
-                    if (document.RootElement.TryGetProperty("delay", out var delayElement) &&
-                        delayElement.ValueKind == JsonValueKind.Number &&
-                        delayElement.TryGetInt32(out var delay))
-                    {
-                        result[tag] = delay;
-                    }
-                    else
-                    {
-                        result[tag] = -1;
-                    }
+                    result[tag] = -1;
+                    continue;
                 }
-                catch
+
+                var payload = await response.Content.ReadAsStringAsync();
+                using var document = JsonDocument.Parse(payload);
+                if (document.RootElement.TryGetProperty("delay", out var delayElement) &&
+                    delayElement.ValueKind == JsonValueKind.Number &&
+                    delayElement.TryGetInt32(out var delay))
+                {
+                    result[tag] = delay;
+                }
+                else
                 {
                     result[tag] = -1;
                 }
+            }
+            catch
+            {
+                result[tag] = -1;
+            }
         }
 
         return result;
@@ -933,7 +933,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         _process?.Dispose();
         _elevatedLogCts?.Cancel();
         _elevatedLogCts?.Dispose();
-        _httpClient.Dispose();
+
 
         if (_windowsJobHandle != IntPtr.Zero)
         {

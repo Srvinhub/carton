@@ -329,10 +329,8 @@ public partial class ProfilesViewModel : PageViewModelBase
                 }
 
                 NewProfileStatus = "Downloading from URL...";
-                
-                using var httpClient = new HttpClient();
-                httpClient.Timeout = TimeSpan.FromSeconds(30);
-                httpClient.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", CartonApplicationInfo.UserAgent);
+
+                var httpClient = HttpClientFactory.External;
                 configContent = await httpClient.GetStringAsync(NewProfileUrl);
             }
 
@@ -372,7 +370,7 @@ public partial class ProfilesViewModel : PageViewModelBase
         {
             var storageProvider = Avalonia.Application.Current?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime;
             var window = storageProvider?.MainWindow;
-            
+
             if (window == null) return;
 
             var storage = window.StorageProvider;
@@ -390,13 +388,13 @@ public partial class ProfilesViewModel : PageViewModelBase
             var file = files.FirstOrDefault();
             if (file == null) return;
 
-        NewLocalFilePath = file.Path.LocalPath;
-        NewLocalMode = 1;
-        NewProfileType = 0;
-        NewProfileName = Path.GetFileNameWithoutExtension(NewLocalFilePath);
-        NewProfileUrl = string.Empty;
-        NewAutoUpdate = false;
-        NewUpdateIntervalMinutes = DefaultUpdateIntervalMinutes;
+            NewLocalFilePath = file.Path.LocalPath;
+            NewLocalMode = 1;
+            NewProfileType = 0;
+            NewProfileName = Path.GetFileNameWithoutExtension(NewLocalFilePath);
+            NewProfileUrl = string.Empty;
+            NewAutoUpdate = false;
+            NewUpdateIntervalMinutes = DefaultUpdateIntervalMinutes;
             ConfigContent = "{}";
             IsContentEditorVisible = false;
             _editingProfile = null;
@@ -599,9 +597,7 @@ public partial class ProfilesViewModel : PageViewModelBase
 
         try
         {
-            using var httpClient = new HttpClient();
-            httpClient.Timeout = TimeSpan.FromSeconds(30);
-            httpClient.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", CartonApplicationInfo.UserAgent);
+            var httpClient = HttpClientFactory.External;
             var content = await httpClient.GetStringAsync(target.Url);
 
             await _configManager.SaveConfigAsync(target.Id, content, ProfileType.Remote);
