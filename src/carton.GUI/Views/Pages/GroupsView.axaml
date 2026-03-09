@@ -126,13 +126,17 @@
                               <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
                               <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
                             </Style>
-                            <Style Selector="Button:pointerover /template/ ContentPresenter">
+                            <Style Selector="Button:pointerover">
                               <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeHighBrush}"/>
                             </Style>
                             <Style Selector="Button[Tag=True]">
                               <Setter Property="Background" Value="{DynamicResource SystemAccentColor}"/>
                               <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColor}"/>
                               <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                            </Style>
+                            <Style Selector="Button[Tag=True]:pointerover">
+                              <Setter Property="Background" Value="{DynamicResource SystemAccentColorLight1}"/>
+                              <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColorLight1}"/>
                             </Style>
                           </Button.Styles>
                           <StackPanel Orientation="Horizontal" Spacing="6">
