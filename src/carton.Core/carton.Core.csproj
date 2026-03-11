@@ -5,4 +5,10 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 	</PropertyGroup>
+
+	<ItemGroup>
+		<Compile Remove="obj\**\*.cs;bin\**\*.cs;obj-codex\**\*.cs" />
+		<EmbeddedResource Remove="obj\**;bin\**;obj-codex\**" />
+		<None Remove="obj\**;bin\**;obj-codex\**" />
+	</ItemGroup>
 </Project>

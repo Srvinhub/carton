@@ -26,6 +26,7 @@ public class ServiceState
     public long TotalUpload { get; set; }
     public long TotalDownload { get; set; }
     public int ConnectionCount { get; set; }
+    public long MemoryInUse { get; set; }
     public string? ErrorMessage { get; set; }
     public DateTime? StartTime { get; set; }
 }

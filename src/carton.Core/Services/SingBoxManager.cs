@@ -19,6 +19,7 @@ public interface ISingBoxManager
 {
     event EventHandler<ServiceStatus>? StatusChanged;
     event EventHandler<TrafficInfo>? TrafficUpdated;
+    event EventHandler<long>? MemoryUpdated;
     event EventHandler<string>? LogReceived;
 
     ServiceState State { get; }
@@ -31,6 +32,7 @@ public interface ISingBoxManager
     Task<List<OutboundGroup>> GetOutboundGroupsAsync();
     Task SelectOutboundAsync(string groupTag, string outboundTag);
     Task<Dictionary<string, int>> RunOutboundDelayTestsAsync(IEnumerable<string> outboundTags, string? testUrl = null, int timeoutMs = 5000);
+    long? GetRunningProcessMemoryBytes();
     Task<List<ConnectionInfo>> GetConnectionsAsync();
     Task CloseConnectionAsync(string connectionId);
     Task CloseAllConnectionsAsync();
@@ -62,6 +64,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
     private CancellationTokenSource? _elevatedLogCts;
     private Task? _elevatedLogTask;
     private Task? _trafficMonitorTask;
+    private Task? _memoryMonitorTask;
     private IntPtr _windowsJobHandle = IntPtr.Zero;
     private const int WindowsElevatedHelperPort = 47891;
     private const string WindowsElevatedHelperArg = "--carton-elevated-helper";
@@ -73,6 +76,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
 
     public event EventHandler<ServiceStatus>? StatusChanged;
     public event EventHandler<TrafficInfo>? TrafficUpdated;
+    public event EventHandler<long>? MemoryUpdated;
     public event EventHandler<string>? LogReceived;
 
     public ServiceState State => _state;
@@ -94,7 +98,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
                 _elevatedPid = await TryFindProcessPidByApiPortAsync();
             }
 
-            EnsureTrafficMonitorRunning();
+            EnsureRuntimeMonitorsRunning();
             return true;
         }
 
@@ -246,7 +250,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             UpdateStatus(ServiceStatus.Running);
             LogReceived?.Invoke(this, "[INFO] sing-box started successfully");
 
-            EnsureTrafficMonitorRunning();
+            EnsureRuntimeMonitorsRunning();
 
             return true;
         }
@@ -479,6 +483,30 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         }
 
         return result;
+    }
+
+    public long? GetRunningProcessMemoryBytes()
+    {
+        try
+        {
+            if (_process is { HasExited: false })
+            {
+                _process.Refresh();
+                return _process.WorkingSet64;
+            }
+
+            if (_elevatedPid.HasValue && _elevatedPid.Value > 0)
+            {
+                using var process = Process.GetProcessById(_elevatedPid.Value);
+                process.Refresh();
+                return process.WorkingSet64;
+            }
+        }
+        catch
+        {
+        }
+
+        return null;
     }
     public async Task<List<ConnectionInfo>> GetConnectionsAsync()
     {
@@ -831,14 +859,122 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         }
     }
 
-    private void EnsureTrafficMonitorRunning()
+    private void EnsureRuntimeMonitorsRunning()
     {
         if (_trafficMonitorTask is { IsCompleted: false })
+        {
+        }
+        else
+        {
+            _trafficMonitorTask = Task.Run(StartTrafficMonitorAsync);
+        }
+
+        if (_memoryMonitorTask is { IsCompleted: false })
         {
             return;
         }
 
-        _trafficMonitorTask = Task.Run(StartTrafficMonitorAsync);
+        _memoryMonitorTask = Task.Run(StartMemoryMonitorAsync);
+    }
+
+    private async Task StartMemoryMonitorAsync()
+    {
+        var buffer = ArrayPool<byte>.Shared.Rent(4096);
+        var stream = new MemoryStream();
+        ClientWebSocket? webSocket = null;
+        var wsUri = BuildWebSocketUri("memory");
+
+        try
+        {
+            while (_state.Status == ServiceStatus.Running)
+            {
+                try
+                {
+                    if (webSocket == null || webSocket.State != WebSocketState.Open)
+                    {
+                        webSocket?.Dispose();
+                        webSocket = new ClientWebSocket();
+                        webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+                        var wsSecret = HttpClientFactory.LocalApiSecret;
+                        if (!string.IsNullOrWhiteSpace(wsSecret))
+                        {
+                            webSocket.Options.SetRequestHeader("Authorization", $"Bearer {wsSecret}");
+                        }
+
+                        using var connectCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                        await webSocket.ConnectAsync(wsUri, connectCts.Token);
+                        stream.SetLength(0);
+                    }
+
+                    var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+                    if (result.MessageType == WebSocketMessageType.Close)
+                    {
+                        await CloseSocketSilentlyAsync(webSocket, "Carton memory monitor reconnect");
+                        webSocket.Dispose();
+                        webSocket = null;
+                        await Task.Delay(500);
+                        continue;
+                    }
+
+                    if (result.Count > 0)
+                    {
+                        stream.Write(buffer, 0, result.Count);
+                    }
+
+                    if (!result.EndOfMessage)
+                    {
+                        continue;
+                    }
+
+                    if (result.MessageType != WebSocketMessageType.Text)
+                    {
+                        stream.SetLength(0);
+                        continue;
+                    }
+
+                    if (stream.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    var payload = Encoding.UTF8.GetString(stream.GetBuffer(), 0, (int)stream.Length);
+                    stream.SetLength(0);
+                    var memoryInUse = TryParseMemorySnapshot(payload);
+                    if (!memoryInUse.HasValue)
+                    {
+                        continue;
+                    }
+
+                    _state.MemoryInUse = memoryInUse.Value;
+                    MemoryUpdated?.Invoke(this, memoryInUse.Value);
+                }
+                catch (Exception e)
+                {
+                    LogReceived?.Invoke(this, $"[WARN] Memory monitor error: {e.Message}");
+                    if (webSocket != null)
+                    {
+                        await CloseSocketSilentlyAsync(webSocket, "Carton memory monitor error");
+                        webSocket.Dispose();
+                        webSocket = null;
+                    }
+
+                    stream.SetLength(0);
+                    await Task.Delay(1000);
+                }
+            }
+        }
+        finally
+        {
+            if (webSocket != null)
+            {
+                await CloseSocketSilentlyAsync(webSocket, "Carton memory monitor stopped");
+                webSocket.Dispose();
+            }
+
+            stream.Dispose();
+            ArrayPool<byte>.Shared.Return(buffer);
+            _memoryMonitorTask = null;
+        }
     }
 
     private TrafficInfo? TryParseTrafficSnapshot(string payload)
@@ -863,6 +999,38 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         catch (JsonException ex)
         {
             LogReceived?.Invoke(this, $"[WARN] Failed to parse traffic snapshot: {ex.Message}");
+            return null;
+        }
+    }
+
+    private long? TryParseMemorySnapshot(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(payload);
+            var root = document.RootElement;
+            if (TryReadTrafficValue(root, new[] { "inuse", "inUse", "memory", "value" }, out var value))
+            {
+                return value;
+            }
+
+            if (root.ValueKind == JsonValueKind.Object &&
+                root.TryGetProperty("now", out var nowElement) &&
+                TryReadTrafficValue(nowElement, new[] { "inuse", "inUse", "memory", "value" }, out value))
+            {
+                return value;
+            }
+
+            return null;
+        }
+        catch (JsonException ex)
+        {
+            LogReceived?.Invoke(this, $"[WARN] Failed to parse memory snapshot: {ex.Message}");
             return null;
         }
     }
@@ -1064,7 +1232,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             _state.StartTime = DateTime.Now;
             UpdateStatus(ServiceStatus.Running);
             LogReceived?.Invoke(this, $"[INFO] sing-box started successfully (elevated, pid={_elevatedPid})");
-            EnsureTrafficMonitorRunning();
+            EnsureRuntimeMonitorsRunning();
             return true;
         }
         catch (Exception ex)

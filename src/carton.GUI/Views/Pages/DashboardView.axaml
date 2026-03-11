@@ -84,10 +84,80 @@
         </StackPanel>
       </Border>
 
-      <StackPanel IsVisible="{Binding ShowDashboardMetrics}" Spacing="16">
-        <Grid ColumnDefinitions="2*,3*,2*" ColumnSpacing="16">
-          <Border Classes="card" Padding="20">
-            <StackPanel Spacing="8">
+      <StackPanel IsVisible="{Binding ShowDashboardMetrics}" Spacing="12">
+        <Border Classes="card" Padding="14,10">
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="{DynamicResource Dashboard.CurrentProfileLabel}"
+                         FontSize="12"
+                         Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                         VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding CurrentProfile}"
+                         FontSize="16"
+                         FontWeight="SemiBold"
+                         VerticalAlignment="Center"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+              <Ellipse Width="10"
+                       Height="10"
+                       VerticalAlignment="Center"
+                       Fill="{Binding IsConnected, Converter={StaticResource ConnectionStatusConverter}}"/>
+              <TextBlock Text="{Binding StatusText}"
+                         FontSize="14"
+                         FontWeight="SemiBold"
+                         VerticalAlignment="Center"/>
+            </StackPanel>
+          </Grid>
+        </Border>
+
+        <Border Classes="card" Padding="14,10">
+          <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
+            <StackPanel Grid.Column="0"
+                        Orientation="Horizontal"
+                        Spacing="8">
+              <Button Content="{DynamicResource Dashboard.Button.CopyCmdProxy}"
+                      Command="{Binding CopyTerminalProxyCommand}"
+                      CommandParameter="cmd"
+                      Padding="12,4"
+                      IsVisible="{Binding IsWindows}"/>
+              <Button Content="{DynamicResource Dashboard.Button.CopyPsProxy}"
+                      Command="{Binding CopyTerminalProxyCommand}"
+                      CommandParameter="ps"
+                      Padding="12,4"
+                      IsVisible="{Binding IsWindows}"/>
+              <Button Content="{DynamicResource Dashboard.Button.CopyLinuxProxy}"
+                      Command="{Binding CopyTerminalProxyCommand}"
+                      CommandParameter="linux"
+                      Padding="12,4"
+                      IsVisible="{Binding IsLinux}"/>
+            </StackPanel>
+
+            <TextBlock Grid.Column="1"
+                       Text="{Binding StartupStatus}"
+                       IsVisible="{Binding StartupStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       FontSize="11"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+
+            <TextBlock Grid.Column="2"
+                       Text="{Binding SessionStartTimeText, StringFormat='启动时间 {0}'}"
+                       FontSize="12"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                       HorizontalAlignment="Right"/>
+
+            <Button Grid.Column="3"
+                    Content="{DynamicResource Dashboard.Button.Stop}"
+                    Command="{Binding StopConnectionCommand}"
+                    Padding="12,4"
+                    Classes="danger"
+                    HorizontalAlignment="Right"/>
+          </Grid>
+        </Border>
+
+        <Grid ColumnDefinitions="1.15*,1.6*,1.15*" ColumnSpacing="16">
+          <Border Classes="card" Padding="18">
+            <StackPanel Spacing="10">
               <TextBlock Text="{DynamicResource Dashboard.ClashMode}"
                          FontSize="14"
                          Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
@@ -99,36 +169,35 @@
                                  IsChecked="{Binding IsSelected}"
                                  Command="{Binding $parent[ItemsControl].((vm:DashboardViewModel)DataContext).ChangeClashModeCommand}"
                                  CommandParameter="{Binding}"
-                                 Margin="0,0,0,4"/>
+                                 Margin="0,0,0,6"/>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
             </StackPanel>
           </Border>
 
-          <Border Grid.Column="1" Classes="card" Padding="20">
-            <StackPanel Spacing="14">
+          <Border Grid.Column="1" Classes="card" Padding="18">
+            <StackPanel Spacing="12">
               <TextBlock Text="{DynamicResource Dashboard.TrafficStats}"
                          FontSize="14"
                          Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+
               <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
-                <StackPanel Grid.Column="0" Spacing="4" Margin="0,0,0,4">
+                <StackPanel Grid.Column="0" Spacing="4">
                   <TextBlock Text="{DynamicResource Dashboard.Label.UploadSpeed}"
                              FontSize="12"
                              Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
                   <TextBlock Text="{Binding UploadSpeed}"
-                             FontSize="20"
-                             FontWeight="SemiBold"
-                             Margin="0,4,0,0"/>
+                             FontSize="18"
+                             FontWeight="SemiBold"/>
                 </StackPanel>
-                <StackPanel Grid.Column="1" Spacing="4" Margin="0,0,0,4">
+                <StackPanel Grid.Column="1" Spacing="4">
                   <TextBlock Text="{DynamicResource Dashboard.Label.DownloadSpeed}"
                              FontSize="12"
                              Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
                   <TextBlock Text="{Binding DownloadSpeed}"
-                             FontSize="20"
-                             FontWeight="SemiBold"
-                             Margin="0,4,0,0"/>
+                             FontSize="18"
+                             FontWeight="SemiBold"/>
                 </StackPanel>
               </Grid>
 
@@ -138,102 +207,48 @@
                              FontSize="12"
                              Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
                   <TextBlock Text="{Binding TotalUpload}"
-                             FontSize="18"
-                             FontWeight="SemiBold"
-                             Margin="0,4,0,0"/>
+                             FontSize="16"
+                             FontWeight="SemiBold"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Spacing="4">
                   <TextBlock Text="{DynamicResource Dashboard.Label.TotalDownload}"
                              FontSize="12"
                              Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
                   <TextBlock Text="{Binding TotalDownload}"
-                             FontSize="18"
-                             FontWeight="SemiBold"
-                             Margin="0,4,0,0"/>
+                             FontSize="16"
+                             FontWeight="SemiBold"/>
                 </StackPanel>
               </Grid>
             </StackPanel>
           </Border>
 
-          <Border Grid.Column="2" Classes="card" Padding="12,20">
+          <Border Grid.Column="2" Classes="card" Padding="18">
             <StackPanel Spacing="12">
-              <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
-                <Ellipse Width="16"
-                         Height="16"
-                         VerticalAlignment="Center"
-                         Fill="{Binding IsConnected, Converter={StaticResource ConnectionStatusConverter}}"/>
-                <StackPanel>
-                  <TextBlock Text="{DynamicResource Dashboard.StatusLabel}"
-                             FontSize="12"
-                             Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-                  <TextBlock Text="{Binding StatusText}"
-                             FontSize="20"
-                             FontWeight="SemiBold"/>
-                </StackPanel>
-              </StackPanel>
-              
-              <Button Content="{DynamicResource Dashboard.Button.Stop}"
-                      Command="{Binding StopConnectionCommand}"
-                      HorizontalAlignment="Center"
-                      HorizontalContentAlignment="Center"
-                      MinWidth="100"
-                      Classes="danger"/>
+              <TextBlock Text="Kernel &amp; Memory"
+                         FontSize="14"
+                         Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
 
-              <StackPanel Spacing="8" IsVisible="{Binding ShowTerminalProxyButtons}" HorizontalAlignment="Center">
-                <Separator Height="1" Margin="0,4" HorizontalAlignment="Stretch"/>
-                
-                <!-- Windows Buttons -->
-                <StackPanel Spacing="6" IsVisible="{Binding IsWindows}" HorizontalAlignment="Center">
-                  <Button Content="{DynamicResource Dashboard.Button.CopyCmdProxy}" 
-                          Command="{Binding CopyTerminalProxyCommandCommand}" 
-                          CommandParameter="cmd"
-                          HorizontalAlignment="Center"
-                          HorizontalContentAlignment="Center"
-                          MinWidth="100"
-                          FontSize="12"
-                          Padding="4,4"/>
-                  <Button Content="{DynamicResource Dashboard.Button.CopyPsProxy}" 
-                          Command="{Binding CopyTerminalProxyCommandCommand}" 
-                          CommandParameter="ps"
-                          HorizontalAlignment="Center"
-                          HorizontalContentAlignment="Center"
-                          MinWidth="100"
-                          FontSize="12"
-                          Padding="4,4"/>
-                </StackPanel>
-                
-                <!-- Linux Button -->
-                <Button Content="{DynamicResource Dashboard.Button.CopyLinuxProxy}" 
-                        Command="{Binding CopyTerminalProxyCommandCommand}" 
-                        CommandParameter="linux"
-                        IsVisible="{Binding IsLinux}"
-                        HorizontalAlignment="Center"
-                        HorizontalContentAlignment="Center"
-                        MinWidth="100"
-                        FontSize="12"
-                        Padding="4,4"/>
-                
-                <TextBlock Text="{Binding StartupStatus}"
-                           IsVisible="{Binding StartupStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                           FontSize="10"
-                           HorizontalAlignment="Center"
-                           TextAlignment="Center"
+              <StackPanel Spacing="4">
+                <TextBlock Text="Kernel Version"
+                           FontSize="12"
                            Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                <TextBlock Text="{Binding KernelVersion}"
+                           FontSize="18"
+                           FontWeight="SemiBold"/>
               </StackPanel>
+
+              <StackPanel Spacing="4">
+                <TextBlock Text="Memory Usage"
+                           FontSize="12"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                <TextBlock Text="{Binding MemoryUsage}"
+                           FontSize="18"
+                           FontWeight="SemiBold"/>
+              </StackPanel>
+
             </StackPanel>
           </Border>
         </Grid>
-        <Border Classes="card" Padding="20">
-          <StackPanel>
-            <TextBlock Text="{DynamicResource Dashboard.CurrentProfileLabel}"
-                       FontSize="12"
-                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-            <TextBlock Text="{Binding CurrentProfile}"
-                       FontSize="16"
-                       FontWeight="SemiBold"
-                       Margin="0,4,0,0"/>
-          </StackPanel>
-        </Border>
       </StackPanel>
     </StackPanel>
   </ScrollViewer>

@@ -3,6 +3,7 @@ using carton.Core.Services;
 using carton.Core.Utilities;
 using carton.GUI.Models;
 using carton.GUI.Services;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System;
@@ -23,6 +24,7 @@ namespace carton.ViewModels;
 public partial class DashboardViewModel : PageViewModelBase
 {
     private readonly ISingBoxManager? _singBoxManager;
+    private readonly IKernelManager? _kernelManager;
     private readonly IProfileManager? _profileManager;
     private readonly IConfigManager? _configManager;
     private readonly Action<string>? _logWriter;
@@ -31,7 +33,6 @@ public partial class DashboardViewModel : PageViewModelBase
     private string? _currentClashMode;
     private ProfileRuntimeOptions _runtimeOptions = new();
     private bool _suppressRuntimeOptionUpdates;
-
     public override NavigationPage PageType => NavigationPage.Dashboard;
 
     [ObservableProperty]
@@ -67,6 +68,12 @@ public partial class DashboardViewModel : PageViewModelBase
     public bool IsLinux => RuntimeInformation.IsOSPlatform(OSPlatform.Linux);
     public bool ShowTerminalProxyButtons => IsConnected;
 
+    [ObservableProperty]
+    private string _kernelVersion = "unknown";
+
+    [ObservableProperty]
+    private string _memoryUsage = "0 B";
+
     [RelayCommand]
     public async Task CopyTerminalProxyCommand(string type)
     {
@@ -96,6 +103,9 @@ public partial class DashboardViewModel : PageViewModelBase
 
     [ObservableProperty]
     private string _startupStatus = string.Empty;
+
+    [ObservableProperty]
+    private string _sessionStartTimeText = "--";
 
     [ObservableProperty]
     private string _inboundPortText = "2028";
@@ -147,22 +157,28 @@ public partial class DashboardViewModel : PageViewModelBase
         {
             OnPropertyChanged(nameof(PortEditButtonText));
             UpdateClashModeOptionDisplayNames();
+            UpdateSessionStartTime();
         };
     }
 
-    public DashboardViewModel(ISingBoxManager singBoxManager, IProfileManager profileManager, IConfigManager configManager, Action<string>? logWriter = null) : this()
+    public DashboardViewModel(ISingBoxManager singBoxManager, IKernelManager kernelManager, IProfileManager profileManager, IConfigManager configManager, Action<string>? logWriter = null) : this()
     {
         _singBoxManager = singBoxManager;
+        _kernelManager = kernelManager;
         _profileManager = profileManager;
         _configManager = configManager;
         _logWriter = logWriter;
         _singBoxManager.StatusChanged += OnStatusChanged;
         _singBoxManager.TrafficUpdated += OnTrafficUpdated;
+        _singBoxManager.MemoryUpdated += OnMemoryUpdated;
         _ = LoadProfilesAsync();
+        _ = RefreshKernelVersionAsync();
         if (_singBoxManager.IsRunning)
         {
             _ = RefreshClashModeAsync();
             InitializeTrafficMetrics();
+            InitializeMemoryMetrics();
+            UpdateSessionStartTime();
         }
     }
 
@@ -180,16 +196,21 @@ public partial class DashboardViewModel : PageViewModelBase
                 _ => _localizationService["Status.Disconnected"]
             };
             OnPropertyChanged(nameof(ShowTerminalProxyButtons));
+            UpdateSessionStartTime();
         });
 
         if (status == ServiceStatus.Running)
         {
             _ = RefreshClashModeAsync();
-            Avalonia.Threading.Dispatcher.UIThread.Post(InitializeTrafficMetrics);
+            Dispatcher.UIThread.Post(() =>
+            {
+                InitializeTrafficMetrics();
+                InitializeMemoryMetrics();
+            });
         }
         else
         {
-            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            Dispatcher.UIThread.Post(() =>
             {
                 UpdateClashModeSelection(null);
                 ResetTrafficDisplay();
@@ -219,12 +240,32 @@ public partial class DashboardViewModel : PageViewModelBase
             return;
         }
 
-        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        Dispatcher.UIThread.Post(() =>
         {
             UploadSpeed = FormatBytes(traffic.Uplink) + "/s";
             DownloadSpeed = FormatBytes(traffic.Downlink) + "/s";
             TotalUpload = FormatBytes(_singBoxManager.State.TotalUpload);
             TotalDownload = FormatBytes(_singBoxManager.State.TotalDownload);
+        });
+    }
+
+    private void InitializeMemoryMetrics()
+    {
+        if (_singBoxManager == null)
+        {
+            MemoryUsage = "0 B";
+            return;
+        }
+
+        var memoryInUse = _singBoxManager.State.MemoryInUse;
+        MemoryUsage = FormatBytes(memoryInUse);
+    }
+
+    private void OnMemoryUpdated(object? sender, long memoryInUse)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            MemoryUsage = FormatBytes(memoryInUse);
         });
     }
 
@@ -714,6 +755,32 @@ public partial class DashboardViewModel : PageViewModelBase
         DownloadSpeed = "0 B/s";
         TotalUpload = "0 B";
         TotalDownload = "0 B";
+        MemoryUsage = "0 B";
+        SessionStartTimeText = "--";
+    }
+
+    private async Task RefreshKernelVersionAsync()
+    {
+        if (_kernelManager == null)
+        {
+            return;
+        }
+
+        try
+        {
+            var info = await _kernelManager.GetInstalledKernelInfoAsync();
+            KernelVersion = info?.KernelVersion ?? "unknown";
+        }
+        catch
+        {
+            KernelVersion = "unknown";
+        }
+    }
+
+    private void UpdateSessionStartTime()
+    {
+        var startTime = _singBoxManager?.State.StartTime;
+        SessionStartTimeText = startTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "--";
     }
 
     private async Task<string?> GetClashModeFromApiAsync()

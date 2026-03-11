@@ -119,6 +119,7 @@
                           Padding="8,4"
                           MinWidth="0"/>
                 </Grid>
+
                 <ScrollViewer x:Name="ProxiesScrollViewer"
                               Grid.Row="1"
                               Padding="0">

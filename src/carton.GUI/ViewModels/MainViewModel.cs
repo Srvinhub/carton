@@ -121,7 +121,7 @@ public partial class MainViewModel : ViewModelBase
         _singBoxManager.TrafficUpdated += OnTrafficUpdated;
         _singBoxManager.LogReceived += OnLogReceived;
 
-        DashboardViewModel = new DashboardViewModel(_singBoxManager, _profileManager, _configManager, LogsViewModel.AddLog);
+        DashboardViewModel = new DashboardViewModel(_singBoxManager, _kernelManager, _profileManager, _configManager, LogsViewModel.AddLog);
         ProfilesViewModel = new ProfilesViewModel(_profileManager, _configManager, _singBoxManager);
         GroupsViewModel = new GroupsViewModel(_singBoxManager);
         _lazyConnectionsViewModel = new Lazy<ConnectionsViewModel>(() => new ConnectionsViewModel(_singBoxManager));
