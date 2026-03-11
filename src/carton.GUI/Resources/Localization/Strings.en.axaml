@@ -27,6 +27,7 @@
   <x:String x:Key="Navigation.Logs">Logs</x:String>
   <x:String x:Key="Navigation.Settings">Settings</x:String>
   <x:String x:Key="Groups.Status.WaitingForSingBoxStart">Waiting for sing-box to start</x:String>
+  <x:String x:Key="Groups.Label.Current">Current: </x:String>
   <x:String x:Key="Connections.Button.CloseAll">Close All</x:String>
   <x:String x:Key="Connections.Button.Close">Close</x:String>
   <x:String x:Key="Connections.Label.CountPrefix">Connections: </x:String>

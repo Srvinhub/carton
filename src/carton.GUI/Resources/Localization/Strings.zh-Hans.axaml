@@ -27,6 +27,7 @@
   <x:String x:Key="Navigation.Logs">日志</x:String>
   <x:String x:Key="Navigation.Settings">设置</x:String>
   <x:String x:Key="Groups.Status.WaitingForSingBoxStart">等待 sing-box 启动</x:String>
+  <x:String x:Key="Groups.Label.Current">当前：</x:String>
   <x:String x:Key="Connections.Button.CloseAll">关闭全部</x:String>
   <x:String x:Key="Connections.Button.Close">关闭</x:String>
   <x:String x:Key="Connections.Label.CountPrefix">连接数： </x:String>
