@@ -6,6 +6,7 @@ namespace carton.Core.Serialization;
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    UnmappedMemberHandling = JsonUnmappedMemberHandling.Skip,
     GenerationMode = JsonSourceGenerationMode.Metadata | JsonSourceGenerationMode.Serialization)]
 [JsonSerializable(typeof(AppPreferences))]
 [JsonSerializable(typeof(AppTheme))]
