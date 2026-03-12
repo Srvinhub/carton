@@ -126,6 +126,7 @@ public partial class MainViewModel : ViewModelBase
 
         _singBoxManager.StatusChanged += OnStatusChanged;
         _singBoxManager.TrafficUpdated += OnTrafficUpdated;
+        _singBoxManager.ManagerLogReceived += OnManagerLogReceived;
         _singBoxManager.LogReceived += OnLogReceived;
 
         DashboardViewModel = new DashboardViewModel(_singBoxManager, _kernelManager, _profileManager, _configManager, LogsViewModel.AddLog);
@@ -241,6 +242,11 @@ public partial class MainViewModel : ViewModelBase
     private void OnLogReceived(object? sender, string log)
     {
         LogsViewModel.AddLog(log, LogSource.SingBox);
+    }
+
+    private void OnManagerLogReceived(object? sender, string log)
+    {
+        LogsViewModel.AddLog(log, LogSource.Carton);
     }
 
     partial void OnSelectedPageChanged(NavigationPage value)

@@ -20,6 +20,7 @@ public interface ISingBoxManager
     event EventHandler<ServiceStatus>? StatusChanged;
     event EventHandler<TrafficInfo>? TrafficUpdated;
     event EventHandler<long>? MemoryUpdated;
+    event EventHandler<string>? ManagerLogReceived;
     event EventHandler<string>? LogReceived;
 
     ServiceState State { get; }
@@ -77,6 +78,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
     public event EventHandler<ServiceStatus>? StatusChanged;
     public event EventHandler<TrafficInfo>? TrafficUpdated;
     public event EventHandler<long>? MemoryUpdated;
+    public event EventHandler<string>? ManagerLogReceived;
     public event EventHandler<string>? LogReceived;
 
     public ServiceState State => _state;
@@ -90,7 +92,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             {
                 _state.StartTime ??= DateTime.Now;
                 UpdateStatus(ServiceStatus.Running);
-                LogReceived?.Invoke(this, "[INFO] Detected existing sing-box instance, synchronized running state");
+                LogManager("[INFO] Detected existing sing-box instance, synchronized running state");
             }
 
             if (!_elevatedPid.HasValue)
@@ -139,12 +141,12 @@ public class SingBoxManager : ISingBoxManager, IDisposable
 
         if (HasCleanupCandidate())
         {
-            LogReceived?.Invoke(this, "[WARN] Cleaning up leftover sing-box process before starting a new session");
+            LogManager("[WARN] Cleaning up leftover sing-box process before starting a new session");
             await StopAsync();
             if (await HasLeftoverSingBoxProcessAsync())
             {
                 const string error = "Failed to clean up previous sing-box process before start";
-                LogReceived?.Invoke(this, $"[ERROR] {error}");
+                LogManager($"[ERROR] {error}");
                 SetError(error);
                 return false;
             }
@@ -153,7 +155,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         if (!File.Exists(configPath))
         {
             var error = $"Configuration file not found: {configPath}";
-            LogReceived?.Invoke(this, $"[ERROR] {error}");
+            LogManager($"[ERROR] {error}");
             SetError(error);
             return false;
         }
@@ -161,7 +163,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         if (!File.Exists(_singBoxPath))
         {
             var error = $"sing-box binary not found at: {_singBoxPath}";
-            LogReceived?.Invoke(this, $"[ERROR] {error}");
+            LogManager($"[ERROR] {error}");
             SetError(error);
             return false;
         }
@@ -171,12 +173,12 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             UpdateStatus(ServiceStatus.Starting);
             _errorOutput.Clear();
 
-            LogReceived?.Invoke(this, $"[INFO] Starting sing-box with config: {configPath}");
-            LogReceived?.Invoke(this, $"[INFO] Binary path: {_singBoxPath}");
+            LogManager($"[INFO] Starting sing-box with config: {configPath}");
+            LogManager($"[INFO] Binary path: {_singBoxPath}");
 
             if (RequiresElevatedPrivileges(configPath))
             {
-                LogReceived?.Invoke(this, "[INFO] TUN inbound detected, requesting elevated privileges...");
+                LogManager("[INFO] TUN inbound detected, requesting elevated privileges...");
                 return await StartElevatedAsync(configPath);
             }
 
@@ -201,7 +203,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             {
                 if (!string.IsNullOrEmpty(e.Data))
                 {
-                    LogReceived?.Invoke(this, e.Data);
+                    LogKernel(e.Data);
                 }
             };
 
@@ -210,7 +212,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
                 if (!string.IsNullOrEmpty(e.Data))
                 {
                     _errorOutput.Add(e.Data);
-                    LogReceived?.Invoke(this, $"[ERROR] {e.Data}");
+                    LogKernel($"[ERROR] {e.Data}");
                 }
             };
 
@@ -224,14 +226,14 @@ public class SingBoxManager : ISingBoxManager, IDisposable
                     {
                         errorMsg += $": {string.Join("\n", _errorOutput)}";
                     }
-                    LogReceived?.Invoke(this, $"[ERROR] {errorMsg}");
+                    LogManager($"[ERROR] {errorMsg}");
                     SetError(errorMsg);
                 }
             };
 
             _process.EnableRaisingEvents = true;
 
-            LogReceived?.Invoke(this, "[INFO] Starting process...");
+            LogManager("[INFO] Starting process...");
             _process.Start();
             TryAttachProcessToWindowsJob(_process);
             _process.BeginOutputReadLine();
@@ -248,14 +250,14 @@ public class SingBoxManager : ISingBoxManager, IDisposable
                     {
                         errorMsg += $"\n{string.Join("\n", _errorOutput)}";
                     }
-                    LogReceived?.Invoke(this, $"[ERROR] {errorMsg}");
+                    LogManager($"[ERROR] {errorMsg}");
                     await CleanupFailedStartAttemptAsync();
                     SetError(errorMsg);
                     return false;
                 }
 
                 var msg = "sing-box API did not become reachable in time";
-                LogReceived?.Invoke(this, $"[ERROR] {msg}");
+                LogManager($"[ERROR] {msg}");
                 await CleanupFailedStartAttemptAsync();
                 SetError(msg);
                 return false;
@@ -263,7 +265,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
 
             _state.StartTime = DateTime.Now;
             UpdateStatus(ServiceStatus.Running);
-            LogReceived?.Invoke(this, "[INFO] sing-box started successfully");
+            LogManager("[INFO] sing-box started successfully");
 
             EnsureRuntimeMonitorsRunning();
 
@@ -272,7 +274,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         catch (Exception ex)
         {
             var error = $"Failed to start sing-box: {ex.Message}";
-            LogReceived?.Invoke(this, $"[ERROR] {error}");
+            LogManager($"[ERROR] {error}");
             await CleanupFailedStartAttemptAsync();
             SetError(error);
             return false;
@@ -292,7 +294,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
 
         try
         {
-            LogReceived?.Invoke(this, "[INFO] Stopping sing-box...");
+            LogManager("[INFO] Stopping sing-box...");
             UpdateStatus(ServiceStatus.Stopping);
             var stopped = true;
 
@@ -311,7 +313,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             if (!stopped && hasTargetProcess)
             {
                 var error = "Failed to stop sing-box: elevated process is still running";
-                LogReceived?.Invoke(this, $"[ERROR] {error}");
+                LogManager($"[ERROR] {error}");
                 SetError(error);
                 return;
             }
@@ -330,12 +332,12 @@ public class SingBoxManager : ISingBoxManager, IDisposable
 
             _state.StartTime = null;
             UpdateStatus(ServiceStatus.Stopped);
-            LogReceived?.Invoke(this, "[INFO] sing-box stopped");
+            LogManager("[INFO] sing-box stopped");
         }
         catch (Exception ex)
         {
             var error = $"Failed to stop sing-box: {ex.Message}";
-            LogReceived?.Invoke(this, $"[ERROR] {error}");
+            LogManager($"[ERROR] {error}");
             SetError(error);
         }
     }
@@ -809,7 +811,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
                 }
                 catch (Exception e)
                 {
-                    LogReceived?.Invoke(this, $"[WARN] Traffic monitor error: {e.Message}");
+                    LogManager($"[WARN] Traffic monitor error: {e.Message}");
                     if (webSocket != null)
                     {
                         await CloseSocketSilentlyAsync(webSocket, "Carton traffic monitor error");
@@ -834,7 +836,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             }
             catch (Exception e)
             {
-                LogReceived?.Invoke(this, $"[WARN] Connection monitor error: {e.Message}");
+                LogManager($"[WARN] Connection monitor error: {e.Message}");
             }
             finally
             {
@@ -968,7 +970,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
                 }
                 catch (Exception e)
                 {
-                    LogReceived?.Invoke(this, $"[WARN] Memory monitor error: {e.Message}");
+                    LogManager($"[WARN] Memory monitor error: {e.Message}");
                     if (webSocket != null)
                     {
                         await CloseSocketSilentlyAsync(webSocket, "Carton memory monitor error");
@@ -1016,7 +1018,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         }
         catch (JsonException ex)
         {
-            LogReceived?.Invoke(this, $"[WARN] Failed to parse traffic snapshot: {ex.Message}");
+            LogManager($"[WARN] Failed to parse traffic snapshot: {ex.Message}");
             return null;
         }
     }
@@ -1048,7 +1050,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         }
         catch (JsonException ex)
         {
-            LogReceived?.Invoke(this, $"[WARN] Failed to parse memory snapshot: {ex.Message}");
+            LogManager($"[WARN] Failed to parse memory snapshot: {ex.Message}");
             return null;
         }
     }
@@ -1136,6 +1138,16 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         StatusChanged?.Invoke(this, status);
     }
 
+    private void LogManager(string message)
+    {
+        ManagerLogReceived?.Invoke(this, message);
+    }
+
+    private void LogKernel(string message)
+    {
+        LogReceived?.Invoke(this, message);
+    }
+
     private void SetError(string message)
     {
         _state.Status = ServiceStatus.Error;
@@ -1190,7 +1202,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         }
         catch (Exception ex)
         {
-            LogReceived?.Invoke(this, $"[WARN] Failed to clean up sing-box after a start failure: {ex.Message}");
+            LogManager($"[WARN] Failed to clean up sing-box after a start failure: {ex.Message}");
         }
     }
 
@@ -1249,7 +1261,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         }
         catch (Exception ex)
         {
-            LogReceived?.Invoke(this, $"[WARN] Failed to inspect config for TUN: {ex.Message}");
+            LogManager($"[WARN] Failed to inspect config for TUN: {ex.Message}");
         }
 
         return false;
@@ -1269,7 +1281,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             if (!result.Success)
             {
                 var msg = string.IsNullOrWhiteSpace(result.ErrorMessage) ? "Elevated start failed" : result.ErrorMessage;
-                LogReceived?.Invoke(this, $"[ERROR] {msg}");
+                LogManager($"[ERROR] {msg}");
                 SetError(msg);
                 return false;
             }
@@ -1279,11 +1291,11 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             {
                 _elevatedPid = pid.Value;
                 TryAttachProcessIdToWindowsJob(pid.Value);
-                LogReceived?.Invoke(this, $"[INFO] Elevated process PID: {pid.Value}");
+                LogManager($"[INFO] Elevated process PID: {pid.Value}");
             }
             else
             {
-                LogReceived?.Invoke(this, "[INFO] No PID from helper response, will discover via API port");
+                LogManager("[INFO] No PID from helper response, will discover via API port");
             }
 
             _elevatedLogPath = elevatedLogPath;
@@ -1295,7 +1307,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
                 var recentLog = await ReadRecentLogLinesAsync(elevatedLogPath, 20);
                 var msg = "sing-box API did not become reachable in time" +
                           (string.IsNullOrWhiteSpace(recentLog) ? string.Empty : $": {recentLog}");
-                LogReceived?.Invoke(this, $"[ERROR] {msg}");
+                LogManager($"[ERROR] {msg}");
                 await CleanupFailedStartAttemptAsync();
                 SetError(msg);
                 return false;
@@ -1303,14 +1315,14 @@ public class SingBoxManager : ISingBoxManager, IDisposable
 
             _state.StartTime = DateTime.Now;
             UpdateStatus(ServiceStatus.Running);
-            LogReceived?.Invoke(this, $"[INFO] sing-box started successfully (elevated, pid={_elevatedPid})");
+            LogManager($"[INFO] sing-box started successfully (elevated, pid={_elevatedPid})");
             EnsureRuntimeMonitorsRunning();
             return true;
         }
         catch (Exception ex)
         {
             var error = $"Failed to start sing-box with administrator privileges: {ex.Message}";
-            LogReceived?.Invoke(this, $"[ERROR] {error}");
+            LogManager($"[ERROR] {error}");
             await CleanupFailedStartAttemptAsync();
             SetError(error);
             return false;
@@ -1320,7 +1332,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
     private async Task<bool> WaitForApiReadyAsync(int? elevatedPid, TimeSpan timeout)
     {
         var start = DateTime.UtcNow;
-        LogReceived?.Invoke(this, $"[INFO] Waiting for sing-box API to become ready (timeout={timeout.TotalSeconds}s)...");
+        LogManager($"[INFO] Waiting for sing-box API to become ready (timeout={timeout.TotalSeconds}s)...");
         var attempt = 0;
         while (DateTime.UtcNow - start < timeout)
         {
@@ -1330,7 +1342,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
                 using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
                 using var response = await client.GetAsync($"{_apiAddress}/version", cts.Token);
-                LogReceived?.Invoke(this, $"[INFO] API responded with status {(int)response.StatusCode}");
+                LogManager($"[INFO] API responded with status {(int)response.StatusCode}");
 
                 // API is reachable, discover PID if we don't have one
                 if (!_elevatedPid.HasValue || _elevatedPid.Value <= 0)
@@ -1352,7 +1364,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             // For non-elevated mode, check if process crashed
             if (_process != null && _process.HasExited)
             {
-                LogReceived?.Invoke(this, "[WARN] Process exited while waiting for API");
+                LogManager("[WARN] Process exited while waiting for API");
                 return false;
             }
 
@@ -1364,13 +1376,13 @@ public class SingBoxManager : ISingBoxManager, IDisposable
                     using var proc = Process.GetProcessById(elevatedPid.Value);
                     if (proc.HasExited)
                     {
-                        LogReceived?.Invoke(this, $"[WARN] Elevated process {elevatedPid.Value} exited while waiting for API");
+                        LogManager($"[WARN] Elevated process {elevatedPid.Value} exited while waiting for API");
                         return false;
                     }
                 }
                 catch
                 {
-                    LogReceived?.Invoke(this, $"[WARN] Elevated process {elevatedPid.Value} not found while waiting for API");
+                    LogManager($"[WARN] Elevated process {elevatedPid.Value} not found while waiting for API");
                     return false;
                 }
             }
@@ -1378,7 +1390,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             await Task.Delay(500);
         }
 
-        LogReceived?.Invoke(this, $"[WARN] API did not become ready within {timeout.TotalSeconds}s");
+        LogManager($"[WARN] API did not become ready within {timeout.TotalSeconds}s");
         return false;
     }
 
@@ -1424,7 +1436,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             }
         }
 
-        LogReceived?.Invoke(this, $"[WARN] sing-box process {pid} did not exit, trying force kill...");
+        LogManager($"[WARN] sing-box process {pid} did not exit, trying force kill...");
 
         // Fallback: try taskkill via UAC
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -1445,7 +1457,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
 
         if (IsProcessAlive(pid))
         {
-            LogReceived?.Invoke(this, $"[ERROR] sing-box process {pid} is still running after stop attempts");
+            LogManager($"[ERROR] sing-box process {pid} is still running after stop attempts");
             return false;
         }
 
@@ -1583,7 +1595,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
 
                 if (!string.IsNullOrWhiteSpace(line))
                 {
-                    LogReceived?.Invoke(this, line);
+                    LogKernel(line);
                 }
             }
         }
@@ -1592,7 +1604,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         }
         catch (Exception ex)
         {
-            LogReceived?.Invoke(this, $"[WARN] Elevated log tail stopped: {ex.Message}");
+            LogManager($"[WARN] Elevated log tail stopped: {ex.Message}");
         }
     }
 
@@ -1901,7 +1913,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             int? pid = null;
             try
             {
-                LogReceived?.Invoke(this, "[INFO] Sending start request to elevated helper...");
+                LogManager("[INFO] Sending start request to elevated helper...");
                 using var sendClient = new HttpClient();
                 using var message = new HttpRequestMessage(HttpMethod.Post, GetWindowsHelperUri("start"))
                 {
@@ -1916,7 +1928,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             }
             catch (Exception ex)
             {
-                LogReceived?.Invoke(this, $"[WARN] Failed to send start request: {ex.Message}");
+                LogManager($"[WARN] Failed to send start request: {ex.Message}");
             }
 
             return new ElevatedStartResult
@@ -1989,7 +2001,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         var executablePath = Environment.ProcessPath;
         if (string.IsNullOrWhiteSpace(executablePath))
         {
-            LogReceived?.Invoke(this, "[ERROR] Unable to resolve current executable path for elevated helper");
+            LogManager("[ERROR] Unable to resolve current executable path for elevated helper");
             return false;
         }
 
@@ -2009,7 +2021,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         var result = await RunWindowsUacCommandAsync(script);
         if (!result.Success)
         {
-            LogReceived?.Invoke(this, $"[ERROR] {result.ErrorMessage ?? "Failed to start elevated helper"}");
+            LogManager($"[ERROR] {result.ErrorMessage ?? "Failed to start elevated helper"}");
             return false;
         }
 
@@ -2023,14 +2035,14 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             if (await PingWindowsElevatedHelperAsync(token))
             {
                 _windowsElevatedHelperToken = token;
-                LogReceived?.Invoke(this, "[INFO] Elevated helper ready");
+                LogManager("[INFO] Elevated helper ready");
                 return true;
             }
 
             await Task.Delay(200);
         }
 
-        LogReceived?.Invoke(this, "[ERROR] Elevated helper did not become ready in time");
+        LogManager("[ERROR] Elevated helper did not become ready in time");
         return false;
     }
 
@@ -2314,7 +2326,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             if (_windowsJobHandle == IntPtr.Zero)
             {
                 var code = Marshal.GetLastWin32Error();
-                LogReceived?.Invoke(this, $"[WARN] Failed to create Windows job object: {code}");
+                LogManager($"[WARN] Failed to create Windows job object: {code}");
                 return;
             }
 
@@ -2339,7 +2351,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
                 if (!success)
                 {
                     var code = Marshal.GetLastWin32Error();
-                    LogReceived?.Invoke(this, $"[WARN] Failed to configure Windows job object: {code}");
+                    LogManager($"[WARN] Failed to configure Windows job object: {code}");
                     CloseHandle(_windowsJobHandle);
                     _windowsJobHandle = IntPtr.Zero;
                 }
@@ -2351,7 +2363,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         }
         catch (Exception ex)
         {
-            LogReceived?.Invoke(this, $"[WARN] Failed to initialize Windows job object: {ex.Message}");
+            LogManager($"[WARN] Failed to initialize Windows job object: {ex.Message}");
             if (_windowsJobHandle != IntPtr.Zero)
             {
                 CloseHandle(_windowsJobHandle);
@@ -2374,12 +2386,12 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             if (!success)
             {
                 var code = Marshal.GetLastWin32Error();
-                LogReceived?.Invoke(this, $"[WARN] Failed to attach sing-box to Windows job object: {code}");
+                LogManager($"[WARN] Failed to attach sing-box to Windows job object: {code}");
             }
         }
         catch (Exception ex)
         {
-            LogReceived?.Invoke(this, $"[WARN] Failed to attach sing-box to Windows job object: {ex.Message}");
+            LogManager($"[WARN] Failed to attach sing-box to Windows job object: {ex.Message}");
         }
     }
 
@@ -2408,7 +2420,7 @@ public class SingBoxManager : ISingBoxManager, IDisposable
                 {
                     return;
                 }
-                LogReceived?.Invoke(this, $"[WARN] Failed to open sing-box process {pid} for job object attach: {openCode}");
+                LogManager($"[WARN] Failed to open sing-box process {pid} for job object attach: {openCode}");
                 return;
             }
 
@@ -2416,12 +2428,12 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             if (!success)
             {
                 var code = Marshal.GetLastWin32Error();
-                LogReceived?.Invoke(this, $"[WARN] Failed to attach sing-box process {pid} to Windows job object: {code}");
+                LogManager($"[WARN] Failed to attach sing-box process {pid} to Windows job object: {code}");
             }
         }
         catch (Exception ex)
         {
-            LogReceived?.Invoke(this, $"[WARN] Failed to attach sing-box process {pid} to Windows job object: {ex.Message}");
+            LogManager($"[WARN] Failed to attach sing-box process {pid} to Windows job object: {ex.Message}");
         }
         finally
         {
