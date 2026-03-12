@@ -240,7 +240,7 @@ public partial class MainViewModel : ViewModelBase
 
     private void OnLogReceived(object? sender, string log)
     {
-        LogsViewModel.AddLog(log);
+        LogsViewModel.AddLog(log, LogSource.SingBox);
     }
 
     partial void OnSelectedPageChanged(NavigationPage value)

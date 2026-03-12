@@ -36,6 +36,9 @@
   <x:String x:Key="Logs.Button.CopyAll">Copy All</x:String>
   <x:String x:Key="Logs.Search.Watermark">Search logs...</x:String>
   <x:String x:Key="Logs.Label.CountPrefix">Count: </x:String>
+  <x:String x:Key="Logs.Source.All">All</x:String>
+  <x:String x:Key="Logs.Source.Carton">Carton</x:String>
+  <x:String x:Key="Logs.Source.SingBox">sing-box</x:String>
 
   <x:String x:Key="Profiles.Button.Back">Back</x:String>
   <x:String x:Key="Profiles.Header.Title">Profiles</x:String>

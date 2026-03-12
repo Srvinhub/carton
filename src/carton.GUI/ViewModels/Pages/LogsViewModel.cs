@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
+using carton.GUI.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using carton.GUI.Models;
@@ -18,6 +19,7 @@ public partial class LogsViewModel : PageViewModelBase
     private bool _isOnPage;
     private bool _isWindowVisible = true;
     private bool _hasPendingVisibleRefresh;
+    private readonly ILocalizationService _localizationService;
 
     public override NavigationPage PageType => NavigationPage.Logs;
 
@@ -31,9 +33,13 @@ public partial class LogsViewModel : PageViewModelBase
     private string _selectedLevel = "All";
 
     [ObservableProperty]
+    private LogSourceFilterOptionViewModel? _selectedSourceFilter;
+
+    [ObservableProperty]
     private LogEntryViewModel? _selectedLog;
 
     public ObservableCollection<string> LogLevels { get; } = new() { "All", "Debug", "Info", "Warn", "Error" };
+    public ObservableCollection<LogSourceFilterOptionViewModel> LogSourceFilters { get; } = new();
     private readonly List<LogEntryViewModel> _allLogs = new();
 
     // Keep a large rolling window for troubleshooting while preventing unbounded growth.
@@ -43,6 +49,9 @@ public partial class LogsViewModel : PageViewModelBase
     {
         Title = "Logs";
         Icon = "Logs";
+        _localizationService = LocalizationService.Instance;
+        InitializeSourceFilters();
+        _localizationService.LanguageChanged += (_, _) => RefreshLocalizedText();
     }
 
     public void OnNavigatedTo()
@@ -84,11 +93,21 @@ public partial class LogsViewModel : PageViewModelBase
         ApplyFilters();
     }
 
+    partial void OnSelectedSourceFilterChanged(LogSourceFilterOptionViewModel? value)
+    {
+        ApplyFilters();
+    }
+
     public void AddLog(string message)
+    {
+        AddLog(message, LogSource.Carton);
+    }
+
+    public void AddLog(string message, LogSource source)
     {
         if (!Dispatcher.UIThread.CheckAccess())
         {
-            Dispatcher.UIThread.Post(() => AddLog(message));
+            Dispatcher.UIThread.Post(() => AddLog(message, source));
             return;
         }
 
@@ -135,6 +154,8 @@ public partial class LogsViewModel : PageViewModelBase
         var entry = new LogEntryViewModel
         {
             Time = DateTime.Now.ToString("HH:mm:ss"),
+            Source = source,
+            SourceDisplayName = GetSourceDisplayName(source),
             Level = level,
             Message = msg
         };
@@ -178,6 +199,10 @@ public partial class LogsViewModel : PageViewModelBase
         if (SelectedLog == null) return;
 
         var line = $"[{SelectedLog.Time}] [{SelectedLog.Level}] {SelectedLog.Message}";
+        if (!string.IsNullOrWhiteSpace(SelectedLog.SourceDisplayName))
+        {
+            line = $"[{SelectedLog.Time}] [{SelectedLog.SourceDisplayName}] [{SelectedLog.Level}] {SelectedLog.Message}";
+        }
         await CopyTextToClipboardAsync(line);
     }
 
@@ -189,7 +214,7 @@ public partial class LogsViewModel : PageViewModelBase
         var sb = new StringBuilder();
         foreach (var log in Logs)
         {
-            sb.Append('[').Append(log.Time).Append("] [").Append(log.Level).Append("] ").Append(log.Message).AppendLine();
+            sb.Append('[').Append(log.Time).Append("] [").Append(log.SourceDisplayName).Append("] [").Append(log.Level).Append("] ").Append(log.Message).AppendLine();
         }
 
         await CopyTextToClipboardAsync(sb.ToString());
@@ -238,14 +263,72 @@ public partial class LogsViewModel : PageViewModelBase
             return false;
         }
 
+        var selectedFilter = SelectedSourceFilter?.Filter ?? LogSourceFilter.All;
+        var sourceMatched = selectedFilter switch
+        {
+            LogSourceFilter.All => true,
+            LogSourceFilter.Carton => log.Source == LogSource.Carton,
+            LogSourceFilter.SingBox => log.Source == LogSource.SingBox,
+            _ => true
+        };
+
+        if (!sourceMatched)
+        {
+            return false;
+        }
+
         if (string.IsNullOrWhiteSpace(SearchText))
         {
             return true;
         }
 
         return log.Message.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
+               log.SourceDisplayName.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
                log.Level.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
                log.Time.Contains(SearchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void InitializeSourceFilters()
+    {
+        LogSourceFilters.Clear();
+        LogSourceFilters.Add(new LogSourceFilterOptionViewModel { Filter = LogSourceFilter.All });
+        LogSourceFilters.Add(new LogSourceFilterOptionViewModel { Filter = LogSourceFilter.Carton });
+        LogSourceFilters.Add(new LogSourceFilterOptionViewModel { Filter = LogSourceFilter.SingBox });
+        UpdateSourceFilterDisplayNames();
+        SelectedSourceFilter = LogSourceFilters[0];
+    }
+
+    private void RefreshLocalizedText()
+    {
+        UpdateSourceFilterDisplayNames();
+        foreach (var log in _allLogs)
+        {
+            log.SourceDisplayName = GetSourceDisplayName(log.Source);
+        }
+    }
+
+    private void UpdateSourceFilterDisplayNames()
+    {
+        foreach (var option in LogSourceFilters)
+        {
+            option.DisplayName = option.Filter switch
+            {
+                LogSourceFilter.All => _localizationService["Logs.Source.All"],
+                LogSourceFilter.Carton => _localizationService["Logs.Source.Carton"],
+                LogSourceFilter.SingBox => _localizationService["Logs.Source.SingBox"],
+                _ => option.Filter.ToString()
+            };
+        }
+    }
+
+    private string GetSourceDisplayName(LogSource source)
+    {
+        return source switch
+        {
+            LogSource.Carton => _localizationService["Logs.Source.Carton"],
+            LogSource.SingBox => _localizationService["Logs.Source.SingBox"],
+            _ => source.ToString()
+        };
     }
 }
 
@@ -255,8 +338,23 @@ public partial class LogEntryViewModel : ObservableObject
     private string _time = string.Empty;
 
     [ObservableProperty]
+    private LogSource _source;
+
+    [ObservableProperty]
+    private string _sourceDisplayName = string.Empty;
+
+    [ObservableProperty]
     private string _level = string.Empty;
 
     [ObservableProperty]
     private string _message = string.Empty;
+}
+
+public partial class LogSourceFilterOptionViewModel : ObservableObject
+{
+    [ObservableProperty]
+    private LogSourceFilter _filter;
+
+    [ObservableProperty]
+    private string _displayName = string.Empty;
 }

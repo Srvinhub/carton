@@ -36,6 +36,9 @@
   <x:String x:Key="Logs.Button.CopyAll">复制全部</x:String>
   <x:String x:Key="Logs.Search.Watermark">搜索日志...</x:String>
   <x:String x:Key="Logs.Label.CountPrefix">数量： </x:String>
+  <x:String x:Key="Logs.Source.All">全部</x:String>
+  <x:String x:Key="Logs.Source.Carton">Carton</x:String>
+  <x:String x:Key="Logs.Source.SingBox">sing-box</x:String>
 
   <x:String x:Key="Profiles.Button.Back">返回</x:String>
   <x:String x:Key="Profiles.Header.Title">配置管理</x:String>
