@@ -103,6 +103,9 @@
 	<x:String x:Key="Dashboard.Button.CopyLinuxProxy">Terminal Proxy</x:String>
 	<x:String x:Key="Dashboard.Button.OpenWebUi">Open WebUI</x:String>
 	<x:String x:Key="Dashboard.Status.OpenWebUiFailed">Failed to open WebUI</x:String>
+	<x:String x:Key="Dashboard.KernelMemory.Title">Kernel &amp; Memory</x:String>
+	<x:String x:Key="Dashboard.KernelMemory.KernelVersion">Kernel Version</x:String>
+	<x:String x:Key="Dashboard.KernelMemory.MemoryUsage">Memory Usage</x:String>
 
 	<x:String x:Key="Status.Connected">Connected</x:String>
 	<x:String x:Key="Status.Starting">Starting...</x:String>

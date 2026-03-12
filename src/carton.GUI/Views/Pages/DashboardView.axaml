@@ -227,12 +227,12 @@
 
           <Border Grid.Column="2" Classes="card" Padding="18">
             <StackPanel Spacing="12">
-              <TextBlock Text="Kernel &amp; Memory"
+              <TextBlock Text="{DynamicResource Dashboard.KernelMemory.Title}"
                          FontSize="14"
                          Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
 
               <StackPanel Spacing="4">
-                <TextBlock Text="Kernel Version"
+                <TextBlock Text="{DynamicResource Dashboard.KernelMemory.KernelVersion}"
                            FontSize="12"
                            Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
                 <TextBlock Text="{Binding KernelVersion}"
@@ -241,7 +241,7 @@
               </StackPanel>
 
               <StackPanel Spacing="4">
-                <TextBlock Text="Memory Usage"
+                <TextBlock Text="{DynamicResource Dashboard.KernelMemory.MemoryUsage}"
                            FontSize="12"
                            Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
                 <TextBlock Text="{Binding MemoryUsage}"

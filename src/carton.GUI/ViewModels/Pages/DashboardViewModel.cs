@@ -179,7 +179,9 @@ public partial class DashboardViewModel : PageViewModelBase
             OnPropertyChanged(nameof(PortEditButtonText));
             UpdateClashModeOptionDisplayNames();
             UpdateSessionStartTime();
+            _ = RefreshKernelVersionAsync();
         };
+        _ = RefreshKernelVersionAsync();
     }
 
     public DashboardViewModel(ISingBoxManager singBoxManager, IKernelManager kernelManager, IProfileManager profileManager, IConfigManager configManager, Action<string>? logWriter = null) : this()
@@ -790,11 +792,11 @@ public partial class DashboardViewModel : PageViewModelBase
         try
         {
             var info = await _kernelManager.GetInstalledKernelInfoAsync();
-            KernelVersion = info?.KernelVersion ?? "unknown";
+            KernelVersion = info?.KernelVersion ?? GetString("Common.Unknown", "unknown");
         }
         catch
         {
-            KernelVersion = "unknown";
+            KernelVersion = GetString("Common.Unknown", "unknown");
         }
     }
 

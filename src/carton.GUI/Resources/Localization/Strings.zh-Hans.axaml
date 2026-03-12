@@ -210,4 +210,7 @@
 	<x:String x:Key="Settings.About.Description">基于 sing-box 的跨平台代理客户端</x:String>
 
 	<x:String x:Key="Common.Unknown">未知</x:String>
+	<x:String x:Key="Dashboard.KernelMemory.Title">内核和内存</x:String>
+	<x:String x:Key="Dashboard.KernelMemory.KernelVersion">内核版本</x:String>
+	<x:String x:Key="Dashboard.KernelMemory.MemoryUsage">内存使用</x:String>
 </ResourceDictionary>
