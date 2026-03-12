@@ -31,6 +31,7 @@ public partial class DashboardViewModel : PageViewModelBase
     private readonly IConfigManager? _configManager;
     private readonly Action<string>? _logWriter;
     private readonly ILocalizationService _localizationService;
+    private readonly ClashConfigCacheService _clashConfigCache;
     private HttpClient _clashHttpClient => HttpClientFactory.LocalApi;
     private string? _currentClashMode;
     private ProfileRuntimeOptions _runtimeOptions = new();
@@ -173,11 +174,10 @@ public partial class DashboardViewModel : PageViewModelBase
         Title = "Dashboard";
         Icon = "Home";
         _localizationService = LocalizationService.Instance;
-        InitializeClashModeOptions();
+        _clashConfigCache = ClashConfigCacheService.Instance;
         _localizationService.LanguageChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(PortEditButtonText));
-            UpdateClashModeOptionDisplayNames();
             UpdateSessionStartTime();
             _ = RefreshKernelVersionAsync();
         };
@@ -235,6 +235,7 @@ public partial class DashboardViewModel : PageViewModelBase
         {
             Dispatcher.UIThread.Post(() =>
             {
+                _clashConfigCache.Clear();
                 UpdateClashModeSelection(null);
                 ResetTrafficDisplay();
             });
@@ -291,16 +292,6 @@ public partial class DashboardViewModel : PageViewModelBase
             MemoryUsage = FormatBytes(memoryInUse);
         });
     }
-
-    private void InitializeClashModeOptions()
-    {
-        ClashModeOptions.Clear();
-        ClashModeOptions.Add(new DashboardClashModeOptionViewModel { Mode = "global" });
-        ClashModeOptions.Add(new DashboardClashModeOptionViewModel { Mode = "rule" });
-        ClashModeOptions.Add(new DashboardClashModeOptionViewModel { Mode = "direct" });
-        UpdateClashModeOptionDisplayNames();
-    }
-
     public async Task LoadProfilesAsync()
     {
         if (_profileManager == null) return;
@@ -464,7 +455,19 @@ public partial class DashboardViewModel : PageViewModelBase
         var success = await SetClashModeAsync(option.Mode);
         if (success)
         {
-            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => UpdateClashModeSelection(option.Mode));
+            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (_clashConfigCache.Current is { } current)
+                {
+                    _clashConfigCache.Update(new ClashConfigSnapshot
+                    {
+                        Mode = option.Mode,
+                        ModeList = current.ModeList
+                    }, isDirty: true);
+                }
+
+                UpdateClashModeSelection(option.Mode);
+            });
         }
         else
         {
@@ -768,8 +771,12 @@ public partial class DashboardViewModel : PageViewModelBase
 
     private async Task RefreshClashModeAsync()
     {
-        var mode = await GetClashModeFromApiAsync();
-        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => UpdateClashModeSelection(mode));
+        var config = await GetClashConfigFromApiAsync();
+        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            ApplyClashModeOptions(config?.ModeList, config?.Mode);
+            UpdateClashModeSelection(config?.Mode);
+        });
     }
 
     private void ResetTrafficDisplay()
@@ -806,30 +813,31 @@ public partial class DashboardViewModel : PageViewModelBase
         SessionStartTimeText = startTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "--";
     }
 
-    private async Task<string?> GetClashModeFromApiAsync()
+    private async Task<ClashConfigResponse?> GetClashConfigFromApiAsync()
     {
         try
         {
             var response = await _clashHttpClient.GetAsync("configs");
             if (!response.IsSuccessStatusCode)
             {
-                LogError($"Failed to fetch Clash mode: {response.StatusCode}");
+                LogError($"Failed to fetch Clash config: {response.StatusCode}");
                 return null;
             }
 
             var payload = await response.Content.ReadAsStringAsync();
-            using var document = JsonDocument.Parse(payload);
-            if (document.RootElement.TryGetProperty("mode", out var modeElement) &&
-                modeElement.ValueKind == JsonValueKind.String)
-            {
-                return modeElement.GetString();
-            }
-
-            return null;
+            var config = JsonSerializer.Deserialize<ClashConfigSnapshot>(payload);
+            _clashConfigCache.Update(config);
+            return config == null
+                ? null
+                : new ClashConfigResponse
+                {
+                    Mode = config.Mode,
+                    ModeList = config.ModeList
+                };
         }
         catch (Exception ex)
         {
-            LogError($"Failed to fetch Clash mode: {ex.Message}");
+            LogError($"Failed to fetch Clash config: {ex.Message}");
             return null;
         }
     }
@@ -873,17 +881,26 @@ public partial class DashboardViewModel : PageViewModelBase
         }
     }
 
-    private void UpdateClashModeOptionDisplayNames()
+    private void ApplyClashModeOptions(IReadOnlyList<string>? modeList, string? currentMode)
     {
-        foreach (var option in ClashModeOptions)
+        var modes = (modeList ?? Array.Empty<string>())
+            .Where(mode => !string.IsNullOrWhiteSpace(mode))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (modes.Count == 0 && !string.IsNullOrWhiteSpace(currentMode))
         {
-            option.DisplayName = option.Mode switch
+            modes.Add(currentMode);
+        }
+
+        ClashModeOptions.Clear();
+        foreach (var mode in modes)
+        {
+            ClashModeOptions.Add(new DashboardClashModeOptionViewModel
             {
-                "global" => GetString("Dashboard.ClashMode.Global", "Global"),
-                "rule" => GetString("Dashboard.ClashMode.Rule", "Rule"),
-                "direct" => GetString("Dashboard.ClashMode.Direct", "Direct"),
-                _ => option.Mode ?? string.Empty
-            };
+                Mode = mode,
+                DisplayName = mode
+            });
         }
     }
 
@@ -948,4 +965,11 @@ public partial class DashboardClashModeOptionViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isSelected;
+}
+
+public sealed class ClashConfigResponse
+{
+    public string? Mode { get; set; }
+
+    public List<string>? ModeList { get; set; }
 }

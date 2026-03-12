@@ -85,9 +85,6 @@
 	<x:String x:Key="Dashboard.StartupPrompt">启动前请选择一个配置</x:String>
 	<x:String x:Key="Dashboard.Button.Start">启动</x:String>
 	<x:String x:Key="Dashboard.ClashMode">Clash 出站模式</x:String>
-	<x:String x:Key="Dashboard.ClashMode.Global">全局</x:String>
-	<x:String x:Key="Dashboard.ClashMode.Rule">规则</x:String>
-	<x:String x:Key="Dashboard.ClashMode.Direct">直连</x:String>
 	<x:String x:Key="Dashboard.TrafficStats">流量统计</x:String>
 	<x:String x:Key="Dashboard.Label.UploadSpeed">上传速度</x:String>
 	<x:String x:Key="Dashboard.Label.DownloadSpeed">下载速度</x:String>

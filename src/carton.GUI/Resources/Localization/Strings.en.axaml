@@ -86,9 +86,6 @@
 	<x:String x:Key="Dashboard.StartupPrompt">Select a profile before starting</x:String>
 	<x:String x:Key="Dashboard.Button.Start">Start</x:String>
   <x:String x:Key="Dashboard.ClashMode">Clash Outbound Mode</x:String>
-  <x:String x:Key="Dashboard.ClashMode.Global">Global</x:String>
-  <x:String x:Key="Dashboard.ClashMode.Rule">Rule</x:String>
-  <x:String x:Key="Dashboard.ClashMode.Direct">Direct</x:String>
 	<x:String x:Key="Dashboard.TrafficStats">Traffic Statistics</x:String>
 	<x:String x:Key="Dashboard.Label.UploadSpeed">Upload Speed</x:String>
 	<x:String x:Key="Dashboard.Label.DownloadSpeed">Download Speed</x:String>

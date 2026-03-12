@@ -56,5 +56,7 @@ Others
 *.bak
 *.cache
 sing-box-for-apple-dev/
-.claude/settings.local.json
+.dotnet-cli
 .dotnet
+.claude
+

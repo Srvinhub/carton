@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Linq;
@@ -19,6 +20,7 @@ public partial class GroupsViewModel : PageViewModelBase
     private const string WaitingForSingBoxResourceKey = "Groups.Status.WaitingForSingBoxStart";
     private readonly ISingBoxManager? _singBoxManager;
     private readonly SemaphoreSlim _loadSemaphore = new(1, 1);
+    private readonly ClashConfigCacheService _clashConfigCache;
 
     public override NavigationPage PageType => NavigationPage.Groups;
 
@@ -44,6 +46,7 @@ public partial class GroupsViewModel : PageViewModelBase
     {
         Title = "Groups";
         Icon = "Group";
+        _clashConfigCache = ClashConfigCacheService.Instance;
         Groups.CollectionChanged += OnGroupsCollectionChanged;
         UpdateGroupTabsVisibility();
     }
@@ -65,7 +68,10 @@ public partial class GroupsViewModel : PageViewModelBase
 
         if (_singBoxManager.IsRunning)
         {
-            _ = LoadGroupsAsync();
+            if (Groups.Count == 0 || _clashConfigCache.IsDirty)
+            {
+                _ = LoadGroupsAsync();
+            }
         }
         else if (Groups.Count == 0)
         {
@@ -102,14 +108,20 @@ public partial class GroupsViewModel : PageViewModelBase
             }
 
             var groups = await _singBoxManager.GetOutboundGroupsAsync();
+            var clashConfig = _clashConfigCache.Current;
+            var filteredGroups = groups
+                .Where(group => ShouldDisplayGroup(group, clashConfig))
+                .ToList();
 
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
                 var previousSelection = SelectedGroup?.Name;
+                var preferGlobalGroup = string.Equals(clashConfig?.Mode, "global", StringComparison.OrdinalIgnoreCase);
                 Groups.Clear();
                 GroupItemViewModel? selected = null;
+                GroupItemViewModel? globalGroup = null;
 
-                foreach (var group in groups)
+                foreach (var group in filteredGroups)
                 {
                     var outboundItems = group.Items
                         .Select(item => new OutboundItemViewModel
@@ -152,14 +164,22 @@ public partial class GroupsViewModel : PageViewModelBase
                         selected = groupVm;
                     }
 
+                    if (string.Equals(groupVm.Name, "GLOBAL", StringComparison.OrdinalIgnoreCase))
+                    {
+                        globalGroup = groupVm;
+                    }
+
                     Groups.Add(groupVm);
                 }
 
-                SelectedGroup = selected ?? Groups.FirstOrDefault();
+                SelectedGroup = preferGlobalGroup
+                    ? globalGroup ?? selected ?? Groups.FirstOrDefault()
+                    : selected ?? Groups.FirstOrDefault();
                 StatusMessage = Groups.Count > 0
                     ? $"Loaded {Groups.Count} groups"
                     : "No groups available";
             });
+            _clashConfigCache.MarkClean();
 
             Dispatcher.UIThread.Post(UpdateSelectOutboundCommandStates);
             Dispatcher.UIThread.Post(UpdateTestDelayCommandStates);
@@ -238,6 +258,23 @@ public partial class GroupsViewModel : PageViewModelBase
                 }
             }
         }
+    }
+
+    private static bool ShouldDisplayGroup(OutboundGroup group, ClashConfigSnapshot? clashConfig)
+    {
+        if (!string.Equals(group.Tag, "GLOBAL", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var modeCount = clashConfig?.ModeList?
+            .Count(mode => !string.IsNullOrWhiteSpace(mode)) ?? 0;
+        if (modeCount <= 1)
+        {
+            return false;
+        }
+
+        return string.Equals(clashConfig?.Mode, "global", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task SelectOutboundAsync(string groupTag, string? outboundTag)
