@@ -29,6 +29,13 @@ public sealed class TrayMenuService : IDisposable
     private NativeMenuItem? _profilesMenuItem;
     private NativeMenuItem? _groupsMenuItem;
     private readonly Dictionary<GroupItemViewModel, NotifyCollectionChangedEventHandler> _groupItemsHandlers = new();
+    private readonly object _menuRefreshGate = new();
+    private bool _isProfilesMenuRefreshQueued;
+    private bool _isGroupsMenuRefreshQueued;
+    private int _profilesMenuRenderedHash = int.MinValue;
+    private int _profilesMenuRequestedHash = int.MinValue;
+    private int _groupsMenuRenderedHash = int.MinValue;
+    private int _groupsMenuRequestedHash = int.MinValue;
     private bool _isInitialized;
 
     public TrayMenuService()
@@ -211,9 +218,43 @@ public sealed class TrayMenuService : IDisposable
             return;
         }
 
+        var stateHash = ComputeProfilesMenuStateHash();
+        lock (_menuRefreshGate)
+        {
+            if (stateHash == _profilesMenuRenderedHash || stateHash == _profilesMenuRequestedHash)
+            {
+                return;
+            }
+
+            _profilesMenuRequestedHash = stateHash;
+            if (_isProfilesMenuRefreshQueued)
+            {
+                return;
+            }
+
+            _isProfilesMenuRefreshQueued = true;
+        }
+
         void Update()
         {
-            var menu = new NativeMenu();
+            lock (_menuRefreshGate)
+            {
+                _isProfilesMenuRefreshQueued = false;
+            }
+
+            var currentHash = ComputeProfilesMenuStateHash();
+            lock (_menuRefreshGate)
+            {
+                if (currentHash == _profilesMenuRenderedHash)
+                {
+                    return;
+                }
+
+                _profilesMenuRequestedHash = currentHash;
+            }
+
+            var menu = _profilesMenuItem.Menu ?? new NativeMenu();
+            menu.Items.Clear();
             if (_dashboardViewModel.AvailableProfiles.Count == 0)
             {
                 menu.Items.Add(new NativeMenuItem
@@ -237,7 +278,15 @@ public sealed class TrayMenuService : IDisposable
                 }
             }
 
-            _profilesMenuItem.Menu = menu;
+            if (_profilesMenuItem.Menu != menu)
+            {
+                _profilesMenuItem.Menu = menu;
+            }
+
+            lock (_menuRefreshGate)
+            {
+                _profilesMenuRenderedHash = currentHash;
+            }
         }
 
         RunOnUiThread(Update);
@@ -250,9 +299,43 @@ public sealed class TrayMenuService : IDisposable
             return;
         }
 
+        var stateHash = ComputeGroupsMenuStateHash();
+        lock (_menuRefreshGate)
+        {
+            if (stateHash == _groupsMenuRenderedHash || stateHash == _groupsMenuRequestedHash)
+            {
+                return;
+            }
+
+            _groupsMenuRequestedHash = stateHash;
+            if (_isGroupsMenuRefreshQueued)
+            {
+                return;
+            }
+
+            _isGroupsMenuRefreshQueued = true;
+        }
+
         void Update()
         {
-            var menu = new NativeMenu();
+            lock (_menuRefreshGate)
+            {
+                _isGroupsMenuRefreshQueued = false;
+            }
+
+            var currentHash = ComputeGroupsMenuStateHash();
+            lock (_menuRefreshGate)
+            {
+                if (currentHash == _groupsMenuRenderedHash)
+                {
+                    return;
+                }
+
+                _groupsMenuRequestedHash = currentHash;
+            }
+
+            var menu = _groupsMenuItem.Menu ?? new NativeMenu();
+            menu.Items.Clear();
             var hasGroups = _groupsViewModel.Groups.Count > 0 && _mainViewModel?.IsConnected == true;
 
             if (!hasGroups)
@@ -266,6 +349,10 @@ public sealed class TrayMenuService : IDisposable
                 });
                 _groupsMenuItem.Menu = menu;
                 _groupsMenuItem.IsEnabled = _mainViewModel?.IsConnected == true;
+                lock (_menuRefreshGate)
+                {
+                    _groupsMenuRenderedHash = currentHash;
+                }
                 return;
             }
 
@@ -308,11 +395,70 @@ public sealed class TrayMenuService : IDisposable
                 });
             }
 
-            _groupsMenuItem.Menu = menu;
+            if (_groupsMenuItem.Menu != menu)
+            {
+                _groupsMenuItem.Menu = menu;
+            }
             _groupsMenuItem.IsEnabled = true;
+
+            lock (_menuRefreshGate)
+            {
+                _groupsMenuRenderedHash = currentHash;
+            }
         }
 
         RunOnUiThread(Update);
+    }
+
+    private int ComputeProfilesMenuStateHash()
+    {
+        if (_dashboardViewModel == null)
+        {
+            return 0;
+        }
+
+        var hash = new HashCode();
+        hash.Add(_dashboardViewModel.AvailableProfiles.Count);
+        foreach (var profile in _dashboardViewModel.AvailableProfiles)
+        {
+            hash.Add(profile.Name, StringComparer.Ordinal);
+            hash.Add(profile.IsSelected);
+        }
+
+        return hash.ToHashCode();
+    }
+
+    private int ComputeGroupsMenuStateHash()
+    {
+        if (_groupsViewModel == null)
+        {
+            return 0;
+        }
+
+        var hash = new HashCode();
+        hash.Add(_mainViewModel?.IsConnected == true);
+        hash.Add(_groupsViewModel.Groups.Count);
+        foreach (var group in _groupsViewModel.Groups)
+        {
+            hash.Add(group.Name, StringComparer.Ordinal);
+            hash.Add(group.SelectedOutbound, StringComparer.Ordinal);
+
+            if (group.Items == null)
+            {
+                hash.Add(0);
+                continue;
+            }
+
+            hash.Add(group.Items.Count);
+            foreach (var outbound in group.Items)
+            {
+                hash.Add(outbound.Tag, StringComparer.Ordinal);
+                hash.Add(outbound.Delay);
+                hash.Add(outbound.IsSelected);
+            }
+        }
+
+        return hash.ToHashCode();
     }
 
     private void SelectProfile(DashboardProfileItemViewModel profile)
@@ -483,6 +629,14 @@ public sealed class TrayMenuService : IDisposable
     {
         RunOnUiThread(() =>
         {
+            lock (_menuRefreshGate)
+            {
+                _profilesMenuRenderedHash = int.MinValue;
+                _profilesMenuRequestedHash = int.MinValue;
+                _groupsMenuRenderedHash = int.MinValue;
+                _groupsMenuRequestedHash = int.MinValue;
+            }
+
             if (_trayIcon != null)
             {
                 _trayIcon.ToolTipText = _localizationService["App.Name"];
