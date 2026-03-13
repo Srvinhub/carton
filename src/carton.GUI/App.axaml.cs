@@ -206,3 +206,36 @@ public class ResponsiveItemWidthConverter : Avalonia.Data.Converters.IValueConve
         throw new NotImplementedException();
     }
 }
+
+public class LatencyForegroundConverter : Avalonia.Data.Converters.IValueConverter
+{
+    private static readonly IBrush LowLatencyBrush = new SolidColorBrush(Color.Parse("#16A34A"));
+    private static readonly IBrush MediumLatencyBrush = new SolidColorBrush(Color.Parse("#CA8A04"));
+    private static readonly IBrush HighLatencyBrush = new SolidColorBrush(Color.Parse("#DC2626"));
+    private static readonly IBrush EmptyLatencyBrush = Brushes.Gray;
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is not int latency || latency <= 0)
+        {
+            return EmptyLatencyBrush;
+        }
+
+        if (latency < 400)
+        {
+            return LowLatencyBrush;
+        }
+
+        if (latency < 800)
+        {
+            return MediumLatencyBrush;
+        }
+
+        return HighLatencyBrush;
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}

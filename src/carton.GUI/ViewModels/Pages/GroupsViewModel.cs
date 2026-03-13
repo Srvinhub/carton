@@ -168,7 +168,7 @@ public partial class GroupsViewModel : PageViewModelBase
                         {
                             Tag = item.Tag,
                             Type = item.Type,
-                            Delay = item.UrlTestDelay
+                            RawDelay = item.UrlTestDelay
                         })
                         .ToList();
 
@@ -216,6 +216,7 @@ public partial class GroupsViewModel : PageViewModelBase
                 SelectedGroup = preferGlobalGroup
                     ? globalGroup ?? selected ?? Groups.FirstOrDefault()
                     : selected ?? Groups.FirstOrDefault();
+                RecalculateEffectiveDelays();
                 StatusMessage = Groups.Count > 0
                     ? $"Loaded {Groups.Count} groups"
                     : "No groups available";
@@ -306,6 +307,36 @@ public partial class GroupsViewModel : PageViewModelBase
         }
     }
 
+    private void RecalculateEffectiveDelays()
+    {
+        foreach (var group in Groups)
+        {
+            foreach (var item in group.Items)
+            {
+                item.Delay = ResolveEffectiveDelay(item.Tag, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+            }
+        }
+    }
+
+    private int ResolveEffectiveDelay(string tag, HashSet<string> visitedTags)
+    {
+        if (string.IsNullOrWhiteSpace(tag) || !visitedTags.Add(tag))
+        {
+            return 0;
+        }
+
+        var group = Groups.FirstOrDefault(candidate =>
+            string.Equals(candidate.Name, tag, StringComparison.OrdinalIgnoreCase));
+        if (group != null &&
+            !string.IsNullOrWhiteSpace(group.SelectedOutbound) &&
+            !string.Equals(group.SelectedOutbound, tag, StringComparison.OrdinalIgnoreCase))
+        {
+            return ResolveEffectiveDelay(group.SelectedOutbound, visitedTags);
+        }
+
+        return GetSharedRawDelay(tag);
+    }
+
     private static bool ShouldDisplayGroup(OutboundGroup group, ClashConfigSnapshot? clashConfig)
     {
         if (!string.Equals(group.Tag, "GLOBAL", StringComparison.OrdinalIgnoreCase))
@@ -348,6 +379,7 @@ public partial class GroupsViewModel : PageViewModelBase
                     group.SelectedOutbound = outboundTag;
                 }
 
+                RecalculateEffectiveDelays();
                 StatusMessage = $"Selected {outboundTag} for {groupTag}";
             });
         }
@@ -392,32 +424,35 @@ public partial class GroupsViewModel : PageViewModelBase
         }
 
         var groups = await _singBoxManager.GetOutboundGroupsAsync();
-        var updatedGroups = groups
-            .Where(group => tagSet.Contains(group.Tag))
-            .ToList();
-        if (updatedGroups.Count == 0)
+        var groupLookup = groups.ToDictionary(group => group.Tag, StringComparer.OrdinalIgnoreCase);
+        if (!Groups.Any(group => groupLookup.ContainsKey(group.Name)))
         {
             return;
         }
 
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            foreach (var updatedGroup in updatedGroups)
+            foreach (var existingGroup in Groups)
             {
-                var existingGroup = Groups.FirstOrDefault(group =>
-                    string.Equals(group.Name, updatedGroup.Tag, StringComparison.OrdinalIgnoreCase));
-                if (existingGroup == null)
+                if (!groupLookup.TryGetValue(existingGroup.Name, out var updatedGroup))
                 {
                     continue;
                 }
 
                 existingGroup.SelectedOutbound = updatedGroup.Selected;
 
-                foreach (var updatedItem in updatedGroup.Items)
+                foreach (var existingItem in existingGroup.Items)
                 {
-                    ApplySharedDelay(updatedItem.Tag, updatedItem.UrlTestDelay);
+                    var updatedItem = updatedGroup.Items.FirstOrDefault(item =>
+                        string.Equals(item.Tag, existingItem.Tag, StringComparison.OrdinalIgnoreCase));
+                    if (updatedItem != null)
+                    {
+                        ApplySharedRawDelay(updatedItem.Tag, updatedItem.UrlTestDelay);
+                    }
                 }
             }
+
+            RecalculateEffectiveDelays();
         });
     }
 
@@ -489,14 +524,16 @@ public partial class GroupsViewModel : PageViewModelBase
         {
             var delays = await _singBoxManager.RunOutboundDelayTestsAsync(new[] { item.Tag });
             var delay = delays.TryGetValue(item.Tag, out var value) && value >= 0 ? value : 0;
-            ApplySharedDelay(item.Tag, delay);
+            ApplySharedRawDelay(item.Tag, delay);
+            RecalculateEffectiveDelays();
             StatusMessage = item.Delay > 0
                 ? $"{item.Tag}: {item.Delay}ms"
                 : $"{item.Tag}: timeout";
         }
         catch (Exception ex)
         {
-            ApplySharedDelay(item.Tag, 0);
+            ApplySharedRawDelay(item.Tag, 0);
+            RecalculateEffectiveDelays();
             StatusMessage = $"Failed to test {item.Tag}: {ex.Message}";
         }
         finally
@@ -542,11 +579,11 @@ public partial class GroupsViewModel : PageViewModelBase
 
         items.Add(item);
         var sharedDelay = items
-            .Select(candidate => candidate.Delay)
+            .Select(candidate => candidate.RawDelay)
             .FirstOrDefault(delay => delay > 0);
-        if (sharedDelay > 0 && item.Delay != sharedDelay)
+        if (sharedDelay > 0 && item.RawDelay != sharedDelay)
         {
-            item.Delay = sharedDelay;
+            item.RawDelay = sharedDelay;
         }
     }
 
@@ -557,11 +594,18 @@ public partial class GroupsViewModel : PageViewModelBase
             : Array.Empty<OutboundItemViewModel>();
     }
 
-    private void ApplySharedDelay(string tag, int delay)
+    private int GetSharedRawDelay(string tag)
+    {
+        return GetSharedOutboundItems(tag)
+            .Select(item => item.RawDelay)
+            .FirstOrDefault(delay => delay > 0);
+    }
+
+    private void ApplySharedRawDelay(string tag, int delay)
     {
         foreach (var item in GetSharedOutboundItems(tag))
         {
-            item.Delay = delay;
+            item.RawDelay = delay;
         }
     }
 
@@ -585,7 +629,7 @@ public partial class GroupsViewModel : PageViewModelBase
             .Where(item => !string.IsNullOrWhiteSpace(item.Tag))
             .GroupBy(item => item.Tag, StringComparer.OrdinalIgnoreCase)
             .Select(items => items.First())
-            .Where(item => !onlyTestMissingDelay || GetSharedOutboundItems(item.Tag).All(sharedItem => sharedItem.Delay <= 0))
+            .Where(item => !onlyTestMissingDelay || GetSharedOutboundItems(item.Tag).All(sharedItem => sharedItem.RawDelay <= 0))
             .ToList();
 
         if (targets.Count == 0)
@@ -628,7 +672,8 @@ public partial class GroupsViewModel : PageViewModelBase
 
                 await Dispatcher.UIThread.InvokeAsync(() =>
                 {
-                    ApplySharedDelay(item.Tag, delay);
+                    ApplySharedRawDelay(item.Tag, delay);
+                    RecalculateEffectiveDelays();
                     foreach (var sharedItem in GetSharedOutboundItems(item.Tag))
                     {
                         sharedItem.IsTesting = false;
@@ -712,7 +757,7 @@ public partial class GroupsViewModel : PageViewModelBase
         }
 
         if (onlyTestMissingDelay &&
-            targets.All(item => GetSharedOutboundItems(item.Tag).Any(sharedItem => sharedItem.Delay > 0)))
+            targets.All(item => GetSharedOutboundItems(item.Tag).Any(sharedItem => sharedItem.RawDelay > 0)))
         {
             await RefreshGroupSelectionAsync(group.Name);
             return;
@@ -753,7 +798,8 @@ public partial class GroupsViewModel : PageViewModelBase
 
                 await Dispatcher.UIThread.InvokeAsync(() =>
                 {
-                    ApplySharedDelay(item.Tag, delay);
+                    ApplySharedRawDelay(item.Tag, delay);
+                    RecalculateEffectiveDelays();
                 });
             });
 
@@ -858,6 +904,9 @@ public partial class OutboundItemViewModel : ObservableObject
 
     [ObservableProperty]
     private int _delay;
+
+    [ObservableProperty]
+    private int _rawDelay;
 
     public IAsyncRelayCommand<string>? SelectOutboundCommand { get; set; }
 

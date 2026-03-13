@@ -14,6 +14,7 @@
     <local:NavigationIconConverter x:Key="NavigationIconConverter"/>
     <local:NavigationTitleConverter x:Key="NavigationTitleConverter"/>
     <local:ResponsiveItemWidthConverter x:Key="ResponsiveItemWidthConverter"/>
+    <local:LatencyForegroundConverter x:Key="LatencyForegroundConverter"/>
 
     <DataTemplate x:Key="PageTemplate" DataType="vm:PageViewModelBase">
       <ContentControl Content="{Binding}"/>
