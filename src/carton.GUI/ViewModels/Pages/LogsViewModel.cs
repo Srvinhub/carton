@@ -40,6 +40,9 @@ public partial class LogsViewModel : PageViewModelBase
     [ObservableProperty]
     private LogEntryViewModel? _selectedLog;
 
+    [ObservableProperty]
+    private bool _isAutoScrollToLatest = true;
+
     public ObservableCollection<string> LogLevels { get; } = new() { "All", "Debug", "Info", "Warn", "Error" };
     public ObservableCollection<LogSourceFilterOptionViewModel> LogSourceFilters { get; } = new();
     private readonly FixedLogBuffer _allLogs = new(MaxVisibleLogEntries);

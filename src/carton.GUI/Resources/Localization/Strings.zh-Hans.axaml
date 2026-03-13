@@ -34,6 +34,7 @@
   <x:String x:Key="Logs.Button.Clear">清空</x:String>
   <x:String x:Key="Logs.Button.CopySelected">复制选中</x:String>
   <x:String x:Key="Logs.Button.CopyAll">复制全部</x:String>
+  <x:String x:Key="Logs.CheckBox.AutoScrollToLatest">自动滚动到最新</x:String>
   <x:String x:Key="Logs.Search.Watermark">搜索日志...</x:String>
   <x:String x:Key="Logs.Label.CountPrefix">数量： </x:String>
   <x:String x:Key="Logs.Source.All">全部</x:String>

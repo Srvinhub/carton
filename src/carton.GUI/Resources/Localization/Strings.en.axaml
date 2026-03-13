@@ -34,6 +34,7 @@
   <x:String x:Key="Logs.Button.Clear">Clear</x:String>
   <x:String x:Key="Logs.Button.CopySelected">Copy Selected</x:String>
   <x:String x:Key="Logs.Button.CopyAll">Copy All</x:String>
+  <x:String x:Key="Logs.CheckBox.AutoScrollToLatest">Auto-scroll to latest</x:String>
   <x:String x:Key="Logs.Search.Watermark">Search logs...</x:String>
   <x:String x:Key="Logs.Label.CountPrefix">Count: </x:String>
   <x:String x:Key="Logs.Source.All">All</x:String>
