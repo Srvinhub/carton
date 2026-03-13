@@ -32,6 +32,7 @@ public interface ISingBoxManager
     Task ReloadAsync();
     Task<List<OutboundGroup>> GetOutboundGroupsAsync();
     Task SelectOutboundAsync(string groupTag, string outboundTag);
+    Task RunGroupDelayTestAsync(string groupTag, string? testUrl = null, int timeoutMs = 5000);
     Task<Dictionary<string, int>> RunOutboundDelayTestsAsync(IEnumerable<string> outboundTags, string? testUrl = null, int timeoutMs = 5000);
     long? GetRunningProcessMemoryBytes();
     Task<List<ConnectionInfo>> GetConnectionsAsync();
@@ -407,25 +408,28 @@ public class SingBoxManager : ISingBoxManager, IDisposable
                      {
                          foreach (var item in allElement.EnumerateArray())
                          {
-                             if (item.ValueKind == JsonValueKind.String)
-                             {
-                                var itemTag = item.GetString() ?? string.Empty;
-                                var itemType = string.Empty;
+                              if (item.ValueKind == JsonValueKind.String)
+                              {
+                                 var itemTag = item.GetString() ?? string.Empty;
+                                 var itemType = string.Empty;
+                                 JsonElement itemProxy = default;
 
-                                if (!string.IsNullOrWhiteSpace(itemTag) &&
-                                    proxiesElement.TryGetProperty(itemTag, out var itemProxy) &&
-                                    itemProxy.ValueKind == JsonValueKind.Object)
-                                {
-                                    itemType = ReadString(itemProxy, "type");
-                                }
+                                 if (!string.IsNullOrWhiteSpace(itemTag) &&
+                                     proxiesElement.TryGetProperty(itemTag, out var itemProxyElement) &&
+                                     itemProxyElement.ValueKind == JsonValueKind.Object)
+                                 {
+                                     itemProxy = itemProxyElement;
+                                     itemType = ReadString(itemProxy, "type");
+                                 }
 
                                 group.Items.Add(new OutboundItem
                                 {
                                     Tag = itemTag,
-                                    Type = itemType
+                                    Type = itemType,
+                                    UrlTestDelay = ReadLatestDelay(itemProxy)
                                 });
-                             }
-                         }
+                              }
+                          }
                      }
 
                     groups.Add(group);
@@ -450,6 +454,26 @@ public class SingBoxManager : ISingBoxManager, IDisposable
                 CartonCoreJsonContext.Default.OutboundSelectionRequest);
             var content = new StringContent(payload, Encoding.UTF8, "application/json");
             await _httpClient.PutAsync($"{_apiAddress}/proxies/{Uri.EscapeDataString(groupTag)}", content);
+        }
+        catch
+        {
+        }
+    }
+
+    public async Task RunGroupDelayTestAsync(string groupTag, string? testUrl = null, int timeoutMs = 5000)
+    {
+        if (string.IsNullOrWhiteSpace(groupTag))
+        {
+            return;
+        }
+
+        var urlParam = Uri.EscapeDataString(string.IsNullOrWhiteSpace(testUrl) ? DefaultDelayTestUrl : testUrl);
+
+        try
+        {
+            var endpoint = $"{_apiAddress}/group/{Uri.EscapeDataString(groupTag)}/delay?timeout={timeoutMs}&url={urlParam}";
+            using var response = await _httpClient.GetAsync(endpoint);
+            _ = response.IsSuccessStatusCode;
         }
         catch
         {
@@ -685,9 +709,41 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             return string.Empty;
         }
 
-        return property.ValueKind == JsonValueKind.String
-            ? property.GetString() ?? string.Empty
-            : string.Empty;
+        return property.ValueKind switch
+        {
+            JsonValueKind.String => property.GetString() ?? string.Empty,
+            JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False => property.ToString(),
+            JsonValueKind.Object when property.TryGetProperty("name", out var nameProperty) &&
+                                     nameProperty.ValueKind == JsonValueKind.String
+                => nameProperty.GetString() ?? string.Empty,
+            _ => string.Empty
+        };
+    }
+
+    private static int ReadLatestDelay(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty("history", out var historyElement) ||
+            historyElement.ValueKind != JsonValueKind.Array)
+        {
+            return 0;
+        }
+
+        var latestDelay = 0;
+        foreach (var historyItem in historyElement.EnumerateArray())
+        {
+            if (historyItem.ValueKind != JsonValueKind.Object ||
+                !historyItem.TryGetProperty("delay", out var delayElement) ||
+                delayElement.ValueKind != JsonValueKind.Number ||
+                !delayElement.TryGetInt32(out var delay))
+            {
+                continue;
+            }
+
+            latestDelay = delay > 0 ? delay : 0;
+        }
+
+        return latestDelay;
     }
 
     private static long ReadInt64(JsonElement element, string propertyName)

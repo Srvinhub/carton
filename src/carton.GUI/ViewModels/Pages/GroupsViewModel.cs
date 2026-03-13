@@ -21,6 +21,9 @@ public partial class GroupsViewModel : PageViewModelBase
     private readonly ISingBoxManager? _singBoxManager;
     private readonly SemaphoreSlim _loadSemaphore = new(1, 1);
     private readonly ClashConfigCacheService _clashConfigCache;
+    private readonly Dictionary<string, List<OutboundItemViewModel>> _outboundItemsByTag = new(StringComparer.OrdinalIgnoreCase);
+    private int _urlTestRefreshGeneration;
+    private bool _isPageActive;
 
     public override NavigationPage PageType => NavigationPage.Groups;
 
@@ -59,6 +62,8 @@ public partial class GroupsViewModel : PageViewModelBase
 
     public void OnNavigatedTo()
     {
+        _isPageActive = true;
+
         if (_singBoxManager == null)
         {
             StatusMessage = "sing-box manager unavailable";
@@ -76,6 +81,12 @@ public partial class GroupsViewModel : PageViewModelBase
         {
             StatusMessage = LocalizationService.Instance[WaitingForSingBoxResourceKey];
         }
+    }
+
+    public void OnNavigatedFrom()
+    {
+        _isPageActive = false;
+        _urlTestRefreshGeneration++;
     }
 
     private async Task LoadGroupsAsync()
@@ -98,6 +109,8 @@ public partial class GroupsViewModel : PageViewModelBase
             {
                 await Dispatcher.UIThread.InvokeAsync(() =>
                 {
+                    _outboundItemsByTag.Clear();
+                    _urlTestRefreshGeneration++;
                     Groups.Clear();
                     SelectedGroup = null;
                     StatusMessage = LocalizationService.Instance[WaitingForSingBoxResourceKey];
@@ -116,6 +129,8 @@ public partial class GroupsViewModel : PageViewModelBase
             {
                 var previousSelection = SelectedGroup?.Name;
                 var preferGlobalGroup = string.Equals(clashConfig?.Mode, "global", StringComparison.OrdinalIgnoreCase);
+                _outboundItemsByTag.Clear();
+                _urlTestRefreshGeneration++;
                 Groups.Clear();
                 GroupItemViewModel? selected = null;
                 GroupItemViewModel? globalGroup = null;
@@ -150,6 +165,7 @@ public partial class GroupsViewModel : PageViewModelBase
 
                     foreach (var item in groupVm.Items)
                     {
+                        RegisterOutboundItem(item);
                         item.SelectOutboundCommand = groupVm.SelectOutboundCommand;
                         item.TestDelayCommand = new AsyncRelayCommand(
                             () => TestOutboundAsync(item),
@@ -183,6 +199,7 @@ public partial class GroupsViewModel : PageViewModelBase
             Dispatcher.UIThread.Post(UpdateSelectOutboundCommandStates);
             Dispatcher.UIThread.Post(UpdateTestDelayCommandStates);
             Dispatcher.UIThread.Post(() => TestCurrentGroupCommand.NotifyCanExecuteChanged());
+            _ = RefreshUrlTestGroupsUntilReadyAsync(_urlTestRefreshGeneration);
         }
         catch (Exception ex)
         {
@@ -214,6 +231,8 @@ public partial class GroupsViewModel : PageViewModelBase
         {
             Dispatcher.UIThread.Post(() =>
             {
+                _outboundItemsByTag.Clear();
+                _urlTestRefreshGeneration++;
                 Groups.Clear();
                 SelectedGroup = null;
                 UpdateGroupTabsVisibility();
@@ -307,6 +326,102 @@ public partial class GroupsViewModel : PageViewModelBase
         }
     }
 
+    private async Task RefreshGroupSelectionAsync(string groupTag)
+    {
+        if (_singBoxManager == null || string.IsNullOrWhiteSpace(groupTag) || !_singBoxManager.IsRunning)
+        {
+            return;
+        }
+
+        try
+        {
+            await RefreshGroupsSnapshotAsync(new[] { groupTag });
+        }
+        catch
+        {
+        }
+    }
+
+    private async Task RefreshGroupsSnapshotAsync(IEnumerable<string> groupTags)
+    {
+        if (_singBoxManager == null || !_singBoxManager.IsRunning)
+        {
+            return;
+        }
+
+        var tagSet = groupTags
+            .Where(tag => !string.IsNullOrWhiteSpace(tag))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (tagSet.Count == 0)
+        {
+            return;
+        }
+
+        var groups = await _singBoxManager.GetOutboundGroupsAsync();
+        var updatedGroups = groups
+            .Where(group => tagSet.Contains(group.Tag))
+            .ToList();
+        if (updatedGroups.Count == 0)
+        {
+            return;
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            foreach (var updatedGroup in updatedGroups)
+            {
+                var existingGroup = Groups.FirstOrDefault(group =>
+                    string.Equals(group.Name, updatedGroup.Tag, StringComparison.OrdinalIgnoreCase));
+                if (existingGroup == null)
+                {
+                    continue;
+                }
+
+                existingGroup.SelectedOutbound = updatedGroup.Selected;
+
+                foreach (var updatedItem in updatedGroup.Items)
+                {
+                    ApplySharedDelay(updatedItem.Tag, updatedItem.UrlTestDelay);
+                }
+            }
+        });
+    }
+
+    private async Task RefreshUrlTestGroupsUntilReadyAsync(int generation)
+    {
+        if (_singBoxManager?.IsRunning != true || !_isPageActive)
+        {
+            return;
+        }
+
+        while (generation == _urlTestRefreshGeneration && _singBoxManager.IsRunning && _isPageActive)
+        {
+            var urlTestGroupNames = await Dispatcher.UIThread.InvokeAsync(() => Groups
+                .Where(group => string.Equals(group.Type, "URLTest", StringComparison.OrdinalIgnoreCase))
+                .Select(group => group.Name)
+                .ToList());
+            if (urlTestGroupNames.Count == 0)
+            {
+                return;
+            }
+
+            try
+            {
+                await RefreshGroupsSnapshotAsync(urlTestGroupNames);
+            }
+            catch
+            {
+            }
+
+            if (generation != _urlTestRefreshGeneration || !_singBoxManager.IsRunning || !_isPageActive)
+            {
+                return;
+            }
+
+            await Task.Delay(3000);
+        }
+    }
+
     private async Task TestOutboundAsync(OutboundItemViewModel item)
     {
         if (_singBoxManager == null || string.IsNullOrWhiteSpace(item.Tag))
@@ -325,22 +440,26 @@ public partial class GroupsViewModel : PageViewModelBase
         try
         {
             var delays = await _singBoxManager.RunOutboundDelayTestsAsync(new[] { item.Tag });
-            item.Delay = delays.TryGetValue(item.Tag, out var value) && value >= 0 ? value : 0;
+            var delay = delays.TryGetValue(item.Tag, out var value) && value >= 0 ? value : 0;
+            ApplySharedDelay(item.Tag, delay);
             StatusMessage = item.Delay > 0
                 ? $"{item.Tag}: {item.Delay}ms"
                 : $"{item.Tag}: timeout";
         }
         catch (Exception ex)
         {
-            item.Delay = 0;
+            ApplySharedDelay(item.Tag, 0);
             StatusMessage = $"Failed to test {item.Tag}: {ex.Message}";
         }
         finally
         {
-            item.IsTesting = false;
-            if (item.TestDelayCommand is AsyncRelayCommand updatedCommand)
+            foreach (var sharedItem in GetSharedOutboundItems(item.Tag))
             {
-                updatedCommand.NotifyCanExecuteChanged();
+                sharedItem.IsTesting = false;
+                if (sharedItem.TestDelayCommand is AsyncRelayCommand updatedCommand)
+                {
+                    updatedCommand.NotifyCanExecuteChanged();
+                }
             }
         }
     }
@@ -360,36 +479,95 @@ public partial class GroupsViewModel : PageViewModelBase
         return _singBoxManager?.IsRunning == true && SelectedGroup != null && !IsTestingGroup;
     }
 
-    [RelayCommand(CanExecute = nameof(CanTestCurrentGroup))]
-    private async Task TestCurrentGroupAsync()
+    private void RegisterOutboundItem(OutboundItemViewModel item)
     {
-        if (_singBoxManager == null || SelectedGroup == null)
+        if (string.IsNullOrWhiteSpace(item.Tag))
         {
             return;
         }
 
-        var group = SelectedGroup;
+        if (!_outboundItemsByTag.TryGetValue(item.Tag, out var items))
+        {
+            items = new List<OutboundItemViewModel>();
+            _outboundItemsByTag[item.Tag] = items;
+        }
+
+        items.Add(item);
+        var sharedDelay = items
+            .Select(candidate => candidate.Delay)
+            .FirstOrDefault(delay => delay > 0);
+        if (sharedDelay > 0 && item.Delay != sharedDelay)
+        {
+            item.Delay = sharedDelay;
+        }
+    }
+
+    private IReadOnlyList<OutboundItemViewModel> GetSharedOutboundItems(string tag)
+    {
+        return _outboundItemsByTag.TryGetValue(tag, out var items)
+            ? items
+            : Array.Empty<OutboundItemViewModel>();
+    }
+
+    private void ApplySharedDelay(string tag, int delay)
+    {
+        foreach (var item in GetSharedOutboundItems(tag))
+        {
+            item.Delay = delay;
+        }
+    }
+
+    private async Task TestGroupAsync(
+        GroupItemViewModel group,
+        bool updateTestingState,
+        bool onlyTestMissingDelay)
+    {
+        if (_singBoxManager == null)
+        {
+            return;
+        }
+
+        if (string.Equals(group.Type, "URLTest", StringComparison.OrdinalIgnoreCase))
+        {
+            await TestUrlTestGroupAsync(group, updateTestingState, onlyTestMissingDelay);
+            return;
+        }
+
         var targets = group.Items
             .Where(item => !string.IsNullOrWhiteSpace(item.Tag))
+            .GroupBy(item => item.Tag, StringComparer.OrdinalIgnoreCase)
+            .Select(items => items.First())
+            .Where(item => !onlyTestMissingDelay || GetSharedOutboundItems(item.Tag).All(sharedItem => sharedItem.Delay <= 0))
             .ToList();
 
         if (targets.Count == 0)
         {
-            StatusMessage = "No testable proxies in the current group";
             return;
         }
 
-        IsTestingGroup = true;
-        StatusMessage = $"Testing {group.Name}...";
-
-        foreach (var item in targets)
+        if (updateTestingState)
         {
-            item.IsTesting = true;
-            if (item.TestDelayCommand is AsyncRelayCommand asyncCommand)
+            await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                asyncCommand.NotifyCanExecuteChanged();
-            }
+                IsTestingGroup = true;
+                StatusMessage = $"Testing {group.Name}...";
+            });
         }
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            foreach (var item in targets)
+            {
+                foreach (var sharedItem in GetSharedOutboundItems(item.Tag))
+                {
+                    sharedItem.IsTesting = true;
+                    if (sharedItem.TestDelayCommand is AsyncRelayCommand asyncCommand)
+                    {
+                        asyncCommand.NotifyCanExecuteChanged();
+                    }
+                }
+            }
+        });
 
         try
         {
@@ -402,40 +580,183 @@ public partial class GroupsViewModel : PageViewModelBase
 
                 await Dispatcher.UIThread.InvokeAsync(() =>
                 {
-                    item.Delay = delay;
-                    item.IsTesting = false;
-                    if (item.TestDelayCommand is AsyncRelayCommand asyncCommand)
+                    ApplySharedDelay(item.Tag, delay);
+                    foreach (var sharedItem in GetSharedOutboundItems(item.Tag))
                     {
-                        asyncCommand.NotifyCanExecuteChanged();
+                        sharedItem.IsTesting = false;
+                        if (sharedItem.TestDelayCommand is AsyncRelayCommand asyncCommand)
+                        {
+                            asyncCommand.NotifyCanExecuteChanged();
+                        }
                     }
 
                     completedCount++;
-                    StatusMessage = delay > 0
-                        ? $"{group.Name}: {item.Tag} {delay}ms ({completedCount}/{totalCount})"
-                        : $"{group.Name}: {item.Tag} timeout ({completedCount}/{totalCount})";
+                    if (updateTestingState)
+                    {
+                        StatusMessage = delay > 0
+                            ? $"{group.Name}: {item.Tag} {delay}ms ({completedCount}/{totalCount})"
+                            : $"{group.Name}: {item.Tag} timeout ({completedCount}/{totalCount})";
+                    }
                 });
             });
 
             await Task.WhenAll(testTasks);
-            StatusMessage = $"Test completed: {group.Name}";
+            if (string.Equals(group.Type, "URLTest", StringComparison.OrdinalIgnoreCase))
+            {
+                await RefreshGroupSelectionAsync(group.Name);
+            }
+
+            if (updateTestingState)
+            {
+                StatusMessage = $"Test completed: {group.Name}";
+            }
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Test failed: {ex.Message}";
+            if (updateTestingState)
+            {
+                StatusMessage = $"Test failed: {ex.Message}";
+            }
         }
         finally
         {
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                foreach (var item in targets)
+                {
+                    foreach (var sharedItem in GetSharedOutboundItems(item.Tag))
+                    {
+                        sharedItem.IsTesting = false;
+                        if (sharedItem.TestDelayCommand is AsyncRelayCommand asyncCommand)
+                        {
+                            asyncCommand.NotifyCanExecuteChanged();
+                        }
+                    }
+                }
+
+                if (updateTestingState)
+                {
+                    IsTestingGroup = false;
+                }
+            });
+        }
+    }
+
+    private async Task TestUrlTestGroupAsync(
+        GroupItemViewModel group,
+        bool updateTestingState,
+        bool onlyTestMissingDelay)
+    {
+        if (_singBoxManager == null)
+        {
+            return;
+        }
+
+        var targets = group.Items
+            .Where(item => !string.IsNullOrWhiteSpace(item.Tag))
+            .GroupBy(item => item.Tag, StringComparer.OrdinalIgnoreCase)
+            .Select(items => items.First())
+            .ToList();
+
+        if (targets.Count == 0)
+        {
+            return;
+        }
+
+        if (onlyTestMissingDelay &&
+            targets.All(item => GetSharedOutboundItems(item.Tag).Any(sharedItem => sharedItem.Delay > 0)))
+        {
+            await RefreshGroupSelectionAsync(group.Name);
+            return;
+        }
+
+        if (updateTestingState)
+        {
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                IsTestingGroup = true;
+                StatusMessage = $"Testing {group.Name}...";
+            });
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
             foreach (var item in targets)
             {
-                item.IsTesting = false;
-                if (item.TestDelayCommand is AsyncRelayCommand asyncCommand)
+                foreach (var sharedItem in GetSharedOutboundItems(item.Tag))
                 {
-                    asyncCommand.NotifyCanExecuteChanged();
+                    sharedItem.IsTesting = true;
+                    if (sharedItem.TestDelayCommand is AsyncRelayCommand asyncCommand)
+                    {
+                        asyncCommand.NotifyCanExecuteChanged();
+                    }
                 }
             }
+        });
 
-            IsTestingGroup = false;
+        try
+        {
+            await _singBoxManager.RunGroupDelayTestAsync(group.Name);
+
+            var testTasks = targets.Select(async item =>
+            {
+                var delays = await _singBoxManager.RunOutboundDelayTestsAsync(new[] { item.Tag });
+                var delay = delays.TryGetValue(item.Tag, out var value) && value >= 0 ? value : 0;
+
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    ApplySharedDelay(item.Tag, delay);
+                });
+            });
+
+            await Task.WhenAll(testTasks);
+            await RefreshGroupSelectionAsync(group.Name);
+
+            if (updateTestingState)
+            {
+                StatusMessage = $"Test completed: {group.Name}";
+            }
         }
+        catch (Exception ex)
+        {
+            if (updateTestingState)
+            {
+                StatusMessage = $"Test failed: {ex.Message}";
+            }
+        }
+        finally
+        {
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                foreach (var item in targets)
+                {
+                    foreach (var sharedItem in GetSharedOutboundItems(item.Tag))
+                    {
+                        sharedItem.IsTesting = false;
+                        if (sharedItem.TestDelayCommand is AsyncRelayCommand asyncCommand)
+                        {
+                            asyncCommand.NotifyCanExecuteChanged();
+                        }
+                    }
+                }
+
+                if (updateTestingState)
+                {
+                    IsTestingGroup = false;
+                }
+            });
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanTestCurrentGroup))]
+    private async Task TestCurrentGroupAsync()
+    {
+        if (SelectedGroup == null)
+        {
+            return;
+        }
+
+        await TestGroupAsync(SelectedGroup, updateTestingState: true, onlyTestMissingDelay: false);
     }
 }
 

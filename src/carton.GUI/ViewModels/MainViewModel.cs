@@ -275,6 +275,10 @@ public partial class MainViewModel : ViewModelBase
         {
             _logsViewModel?.OnNavigatedFrom();
         }
+        else if (previousPage == _activeGroupsViewModel)
+        {
+            _activeGroupsViewModel?.OnNavigatedFrom();
+        }
         else if (previousPage == _connectionsViewModel)
         {
             _connectionsViewModel?.OnNavigatedFrom();
