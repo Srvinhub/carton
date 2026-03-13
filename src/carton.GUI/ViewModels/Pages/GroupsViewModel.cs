@@ -1,17 +1,16 @@
-using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Collections.Specialized;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Avalonia.Threading;
-using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
 using carton.Core.Models;
 using carton.Core.Services;
 using carton.GUI.Models;
 using carton.GUI.Services;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace carton.ViewModels;
 
@@ -54,7 +53,7 @@ public partial class GroupsViewModel : PageViewModelBase
         _clashConfigCache = ClashConfigCacheService.Instance;
         _urlTestRefreshTimer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromSeconds(3)
+            Interval = TimeSpan.FromSeconds(2.5f)
         };
         _urlTestRefreshTimer.Tick += OnUrlTestRefreshTimerTick;
         Groups.CollectionChanged += OnGroupsCollectionChanged;
@@ -147,9 +146,15 @@ public partial class GroupsViewModel : PageViewModelBase
 
             var groups = await _singBoxManager.GetOutboundGroupsAsync();
             var clashConfig = _clashConfigCache.Current;
-            var filteredGroups = groups
-                .Where(group => ShouldDisplayGroup(group, clashConfig))
-                .ToList();
+            var filteredGroups = new List<OutboundGroup>(groups.Count);
+            for (var i = 0; i < groups.Count; i++)
+            {
+                var group = groups[i];
+                if (ShouldDisplayGroup(group, clashConfig))
+                {
+                    filteredGroups.Add(group);
+                }
+            }
 
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
@@ -159,18 +164,22 @@ public partial class GroupsViewModel : PageViewModelBase
                 Groups.Clear();
                 GroupItemViewModel? selected = null;
                 GroupItemViewModel? globalGroup = null;
+                GroupItemViewModel? firstGroup = null;
 
                 foreach (var group in filteredGroups)
                 {
                     var isSelectableGroup = !string.Equals(group.Type, "URLTest", StringComparison.OrdinalIgnoreCase);
-                    var outboundItems = group.Items
-                        .Select(item => new OutboundItemViewModel
+                    var outboundItems = new List<OutboundItemViewModel>(group.Items.Count);
+                    for (var i = 0; i < group.Items.Count; i++)
+                    {
+                        var item = group.Items[i];
+                        outboundItems.Add(new OutboundItemViewModel
                         {
                             Tag = item.Tag,
                             Type = item.Type,
                             RawDelay = item.UrlTestDelay
-                        })
-                        .ToList();
+                        });
+                    }
 
                     if (outboundItems.Count == 0)
                     {
@@ -210,12 +219,13 @@ public partial class GroupsViewModel : PageViewModelBase
                         globalGroup = groupVm;
                     }
 
+                    firstGroup ??= groupVm;
                     Groups.Add(groupVm);
                 }
 
                 SelectedGroup = preferGlobalGroup
-                    ? globalGroup ?? selected ?? Groups.FirstOrDefault()
-                    : selected ?? Groups.FirstOrDefault();
+                    ? globalGroup ?? selected ?? firstGroup
+                    : selected ?? firstGroup;
                 RecalculateEffectiveDelays();
                 StatusMessage = Groups.Count > 0
                     ? $"Loaded {Groups.Count} groups"
@@ -325,8 +335,7 @@ public partial class GroupsViewModel : PageViewModelBase
             return 0;
         }
 
-        var group = Groups.FirstOrDefault(candidate =>
-            string.Equals(candidate.Name, tag, StringComparison.OrdinalIgnoreCase));
+        var group = FindGroupByName(tag);
         if (group != null &&
             !string.IsNullOrWhiteSpace(group.SelectedOutbound) &&
             !string.Equals(group.SelectedOutbound, tag, StringComparison.OrdinalIgnoreCase))
@@ -344,8 +353,19 @@ public partial class GroupsViewModel : PageViewModelBase
             return true;
         }
 
-        var modeCount = clashConfig?.ModeList?
-            .Count(mode => !string.IsNullOrWhiteSpace(mode)) ?? 0;
+        var modeCount = 0;
+        var modeList = clashConfig?.ModeList;
+        if (modeList != null)
+        {
+            for (var i = 0; i < modeList.Count; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(modeList[i]))
+                {
+                    modeCount++;
+                }
+            }
+        }
+
         if (modeCount <= 1)
         {
             return false;
@@ -361,8 +381,7 @@ public partial class GroupsViewModel : PageViewModelBase
             return;
         }
 
-        var group = await Dispatcher.UIThread.InvokeAsync(() => Groups.FirstOrDefault(candidate =>
-            string.Equals(candidate.Name, groupTag, StringComparison.OrdinalIgnoreCase)));
+        var group = await Dispatcher.UIThread.InvokeAsync(() => FindGroupByName(groupTag));
         if (group != null && string.Equals(group.Type, "URLTest", StringComparison.OrdinalIgnoreCase))
         {
             return;
@@ -415,17 +434,21 @@ public partial class GroupsViewModel : PageViewModelBase
             return;
         }
 
-        var tagSet = groupTags
-            .Where(tag => !string.IsNullOrWhiteSpace(tag))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var tagSet = CreateTagSet(groupTags);
         if (tagSet.Count == 0)
         {
             return;
         }
 
         var groups = await _singBoxManager.GetOutboundGroupsAsync();
-        var groupLookup = groups.ToDictionary(group => group.Tag, StringComparer.OrdinalIgnoreCase);
-        if (!Groups.Any(group => groupLookup.ContainsKey(group.Name)))
+        var groupLookup = new Dictionary<string, OutboundGroup>(groups.Count, StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < groups.Count; i++)
+        {
+            var group = groups[i];
+            groupLookup[group.Tag] = group;
+        }
+
+        if (!HasMatchingGroup(groupLookup))
         {
             return;
         }
@@ -440,12 +463,11 @@ public partial class GroupsViewModel : PageViewModelBase
                 }
 
                 existingGroup.SelectedOutbound = updatedGroup.Selected;
+                var updatedItemLookup = CreateOutboundItemLookup(updatedGroup);
 
                 foreach (var existingItem in existingGroup.Items)
                 {
-                    var updatedItem = updatedGroup.Items.FirstOrDefault(item =>
-                        string.Equals(item.Tag, existingItem.Tag, StringComparison.OrdinalIgnoreCase));
-                    if (updatedItem != null)
+                    if (updatedItemLookup.TryGetValue(existingItem.Tag, out var updatedItem))
                     {
                         ApplySharedRawDelay(updatedItem.Tag, updatedItem.UrlTestDelay);
                     }
@@ -482,10 +504,7 @@ public partial class GroupsViewModel : PageViewModelBase
         _isRefreshingUrlTestGroups = true;
         try
         {
-            var urlTestGroupNames = await Dispatcher.UIThread.InvokeAsync(() => Groups
-                .Where(group => string.Equals(group.Type, "URLTest", StringComparison.OrdinalIgnoreCase))
-                .Select(group => group.Name)
-                .ToList());
+            var urlTestGroupNames = await Dispatcher.UIThread.InvokeAsync(GetUrlTestGroupNames);
             if (urlTestGroupNames.Count == 0)
             {
                 return;
@@ -578,9 +597,7 @@ public partial class GroupsViewModel : PageViewModelBase
         }
 
         items.Add(item);
-        var sharedDelay = items
-            .Select(candidate => candidate.RawDelay)
-            .FirstOrDefault(delay => delay > 0);
+        var sharedDelay = GetFirstPositiveRawDelay(items);
         if (sharedDelay > 0 && item.RawDelay != sharedDelay)
         {
             item.RawDelay = sharedDelay;
@@ -596,9 +613,17 @@ public partial class GroupsViewModel : PageViewModelBase
 
     private int GetSharedRawDelay(string tag)
     {
-        return GetSharedOutboundItems(tag)
-            .Select(item => item.RawDelay)
-            .FirstOrDefault(delay => delay > 0);
+        var items = GetSharedOutboundItems(tag);
+        for (var i = 0; i < items.Count; i++)
+        {
+            var delay = items[i].RawDelay;
+            if (delay > 0)
+            {
+                return delay;
+            }
+        }
+
+        return 0;
     }
 
     private void ApplySharedRawDelay(string tag, int delay)
@@ -625,12 +650,7 @@ public partial class GroupsViewModel : PageViewModelBase
             return;
         }
 
-        var targets = group.Items
-            .Where(item => !string.IsNullOrWhiteSpace(item.Tag))
-            .GroupBy(item => item.Tag, StringComparer.OrdinalIgnoreCase)
-            .Select(items => items.First())
-            .Where(item => !onlyTestMissingDelay || GetSharedOutboundItems(item.Tag).All(sharedItem => sharedItem.RawDelay <= 0))
-            .ToList();
+        var targets = BuildUniqueOutboundTargets(group.Items, onlyTestMissingDelay);
 
         if (targets.Count == 0)
         {
@@ -663,35 +683,14 @@ public partial class GroupsViewModel : PageViewModelBase
 
         try
         {
-            var completedCount = 0;
+            var completedCounter = new int[1];
             var totalCount = targets.Count;
-            var testTasks = targets.Select(async item =>
+            var testTasks = new Task[targets.Count];
+            for (var i = 0; i < targets.Count; i++)
             {
-                var delays = await _singBoxManager.RunOutboundDelayTestsAsync(new[] { item.Tag });
-                var delay = delays.TryGetValue(item.Tag, out var value) && value >= 0 ? value : 0;
-
-                await Dispatcher.UIThread.InvokeAsync(() =>
-                {
-                    ApplySharedRawDelay(item.Tag, delay);
-                    RecalculateEffectiveDelays();
-                    foreach (var sharedItem in GetSharedOutboundItems(item.Tag))
-                    {
-                        sharedItem.IsTesting = false;
-                        if (sharedItem.TestDelayCommand is AsyncRelayCommand asyncCommand)
-                        {
-                            asyncCommand.NotifyCanExecuteChanged();
-                        }
-                    }
-
-                    completedCount++;
-                    if (updateTestingState)
-                    {
-                        StatusMessage = delay > 0
-                            ? $"{group.Name}: {item.Tag} {delay}ms ({completedCount}/{totalCount})"
-                            : $"{group.Name}: {item.Tag} timeout ({completedCount}/{totalCount})";
-                    }
-                });
-            });
+                var item = targets[i];
+                testTasks[i] = TestGroupTargetAsync(group, item, updateTestingState, totalCount, completedCounter);
+            }
 
             await Task.WhenAll(testTasks);
             if (string.Equals(group.Type, "URLTest", StringComparison.OrdinalIgnoreCase))
@@ -745,19 +744,14 @@ public partial class GroupsViewModel : PageViewModelBase
             return;
         }
 
-        var targets = group.Items
-            .Where(item => !string.IsNullOrWhiteSpace(item.Tag))
-            .GroupBy(item => item.Tag, StringComparer.OrdinalIgnoreCase)
-            .Select(items => items.First())
-            .ToList();
+        var targets = BuildUniqueOutboundTargets(group.Items, onlyTestMissingDelay: false);
 
         if (targets.Count == 0)
         {
             return;
         }
 
-        if (onlyTestMissingDelay &&
-            targets.All(item => GetSharedOutboundItems(item.Tag).Any(sharedItem => sharedItem.RawDelay > 0)))
+        if (onlyTestMissingDelay && AllTargetsHaveSharedDelay(targets))
         {
             await RefreshGroupSelectionAsync(group.Name);
             return;
@@ -791,17 +785,12 @@ public partial class GroupsViewModel : PageViewModelBase
         {
             await _singBoxManager.RunGroupDelayTestAsync(group.Name);
 
-            var testTasks = targets.Select(async item =>
+            var testTasks = new Task[targets.Count];
+            for (var i = 0; i < targets.Count; i++)
             {
-                var delays = await _singBoxManager.RunOutboundDelayTestsAsync(new[] { item.Tag });
-                var delay = delays.TryGetValue(item.Tag, out var value) && value >= 0 ? value : 0;
-
-                await Dispatcher.UIThread.InvokeAsync(() =>
-                {
-                    ApplySharedRawDelay(item.Tag, delay);
-                    RecalculateEffectiveDelays();
-                });
-            });
+                var item = targets[i];
+                testTasks[i] = RefreshUrlTestTargetDelayAsync(item);
+            }
 
             await Task.WhenAll(testTasks);
             await RefreshGroupSelectionAsync(group.Name);
@@ -851,6 +840,196 @@ public partial class GroupsViewModel : PageViewModelBase
         }
 
         await TestGroupAsync(SelectedGroup, updateTestingState: true, onlyTestMissingDelay: false);
+    }
+
+    private GroupItemViewModel? FindGroupByName(string groupName)
+    {
+        for (var i = 0; i < Groups.Count; i++)
+        {
+            var group = Groups[i];
+            if (string.Equals(group.Name, groupName, StringComparison.OrdinalIgnoreCase))
+            {
+                return group;
+            }
+        }
+
+        return null;
+    }
+
+    private static HashSet<string> CreateTagSet(IEnumerable<string> groupTags)
+    {
+        var tagSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var tag in groupTags)
+        {
+            if (!string.IsNullOrWhiteSpace(tag))
+            {
+                tagSet.Add(tag);
+            }
+        }
+
+        return tagSet;
+    }
+
+    private bool HasMatchingGroup(Dictionary<string, OutboundGroup> groupLookup)
+    {
+        for (var i = 0; i < Groups.Count; i++)
+        {
+            if (groupLookup.ContainsKey(Groups[i].Name))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static Dictionary<string, OutboundItem> CreateOutboundItemLookup(OutboundGroup group)
+    {
+        var itemLookup = new Dictionary<string, OutboundItem>(group.Items.Count, StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < group.Items.Count; i++)
+        {
+            var item = group.Items[i];
+            itemLookup[item.Tag] = item;
+        }
+
+        return itemLookup;
+    }
+
+    private List<string> GetUrlTestGroupNames()
+    {
+        var result = new List<string>();
+        for (var i = 0; i < Groups.Count; i++)
+        {
+            var group = Groups[i];
+            if (string.Equals(group.Type, "URLTest", StringComparison.OrdinalIgnoreCase))
+            {
+                result.Add(group.Name);
+            }
+        }
+
+        return result;
+    }
+
+    private static int GetFirstPositiveRawDelay(IReadOnlyList<OutboundItemViewModel> items)
+    {
+        for (var i = 0; i < items.Count; i++)
+        {
+            var delay = items[i].RawDelay;
+            if (delay > 0)
+            {
+                return delay;
+            }
+        }
+
+        return 0;
+    }
+
+    private List<OutboundItemViewModel> BuildUniqueOutboundTargets(
+        ObservableCollection<OutboundItemViewModel> items,
+        bool onlyTestMissingDelay)
+    {
+        var result = new List<OutboundItemViewModel>(items.Count);
+        var seenTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        for (var i = 0; i < items.Count; i++)
+        {
+            var item = items[i];
+            if (string.IsNullOrWhiteSpace(item.Tag) || !seenTags.Add(item.Tag))
+            {
+                continue;
+            }
+
+            if (onlyTestMissingDelay && HasPositiveSharedRawDelay(item.Tag))
+            {
+                continue;
+            }
+
+            result.Add(item);
+        }
+
+        return result;
+    }
+
+    private bool HasPositiveSharedRawDelay(string tag)
+    {
+        var sharedItems = GetSharedOutboundItems(tag);
+        for (var i = 0; i < sharedItems.Count; i++)
+        {
+            if (sharedItems[i].RawDelay > 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool AllTargetsHaveSharedDelay(List<OutboundItemViewModel> targets)
+    {
+        for (var i = 0; i < targets.Count; i++)
+        {
+            if (!HasPositiveSharedRawDelay(targets[i].Tag))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private async Task TestGroupTargetAsync(
+        GroupItemViewModel group,
+        OutboundItemViewModel item,
+        bool updateTestingState,
+        int totalCount,
+        int[] completedCounter)
+    {
+        if (_singBoxManager == null)
+        {
+            return;
+        }
+
+        var delays = await _singBoxManager.RunOutboundDelayTestsAsync(new[] { item.Tag });
+        var delay = delays.TryGetValue(item.Tag, out var value) && value >= 0 ? value : 0;
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            ApplySharedRawDelay(item.Tag, delay);
+            RecalculateEffectiveDelays();
+            foreach (var sharedItem in GetSharedOutboundItems(item.Tag))
+            {
+                sharedItem.IsTesting = false;
+                if (sharedItem.TestDelayCommand is AsyncRelayCommand asyncCommand)
+                {
+                    asyncCommand.NotifyCanExecuteChanged();
+                }
+            }
+
+            completedCounter[0]++;
+            if (updateTestingState)
+            {
+                StatusMessage = delay > 0
+                    ? $"{group.Name}: {item.Tag} {delay}ms ({completedCounter[0]}/{totalCount})"
+                    : $"{group.Name}: {item.Tag} timeout ({completedCounter[0]}/{totalCount})";
+            }
+        });
+    }
+
+    private async Task RefreshUrlTestTargetDelayAsync(OutboundItemViewModel item)
+    {
+        if (_singBoxManager == null)
+        {
+            return;
+        }
+
+        var delays = await _singBoxManager.RunOutboundDelayTestsAsync(new[] { item.Tag });
+        var delay = delays.TryGetValue(item.Tag, out var value) && value >= 0 ? value : 0;
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            ApplySharedRawDelay(item.Tag, delay);
+            RecalculateEffectiveDelays();
+        });
     }
 }
 

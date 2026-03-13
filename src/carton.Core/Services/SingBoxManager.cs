@@ -488,10 +488,15 @@ public class SingBoxManager : ISingBoxManager, IDisposable
             return result;
         }
 
-        var targets = outboundTags
-            .Where(tag => !string.IsNullOrWhiteSpace(tag))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var targets = new List<string>();
+        var seenTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var outboundTag in outboundTags)
+        {
+            if (!string.IsNullOrWhiteSpace(outboundTag) && seenTags.Add(outboundTag))
+            {
+                targets.Add(outboundTag);
+            }
+        }
 
         if (targets.Count == 0)
         {

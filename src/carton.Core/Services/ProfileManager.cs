@@ -47,7 +47,14 @@ public class ProfileManager : IProfileManager
                 await SaveDataUnlockedAsync(data);
             }
 
-            return data.Profiles.Select(CloneProfile).ToList();
+            var profiles = data.Profiles;
+            var result = new List<Profile>(profiles.Count);
+            for (var i = 0; i < profiles.Count; i++)
+            {
+                result.Add(CloneProfile(profiles[i]));
+            }
+
+            return result;
         }
         finally
         {
@@ -61,7 +68,7 @@ public class ProfileManager : IProfileManager
         try
         {
             var data = await LoadOrCreateDataUnlockedAsync();
-            var profile = data.Profiles.FirstOrDefault(p => p.Id == id);
+            var profile = FindProfileById(data.Profiles, id);
             return profile != null ? CloneProfile(profile) : null;
         }
         finally
@@ -76,7 +83,7 @@ public class ProfileManager : IProfileManager
         try
         {
             var data = await LoadOrCreateDataUnlockedAsync();
-            var maxId = data.Profiles.Count > 0 ? data.Profiles.Max(p => p.Id) : 0;
+            var maxId = GetMaxProfileId(data.Profiles);
             profile.Id = maxId + 1;
             profile.CreatedAt = DateTime.Now;
             profile.RuntimeOptions = await ResolveRuntimeOptionsAsync(profile.Id, profile.RuntimeOptions);
@@ -181,7 +188,7 @@ public class ProfileManager : IProfileManager
         try
         {
             var data = await LoadOrCreateDataUnlockedAsync();
-            var profile = data.Profiles.FirstOrDefault(p => p.Id == profileId);
+            var profile = FindProfileById(data.Profiles, profileId);
             return profile?.RuntimeOptions != null
                 ? CloneRuntimeOptions(profile.RuntimeOptions)
                 : new ProfileRuntimeOptions();
@@ -198,7 +205,7 @@ public class ProfileManager : IProfileManager
         try
         {
             var data = await LoadOrCreateDataUnlockedAsync();
-            var profile = data.Profiles.FirstOrDefault(p => p.Id == profileId);
+            var profile = FindProfileById(data.Profiles, profileId);
             if (profile == null)
             {
                 return;
@@ -295,7 +302,7 @@ public class ProfileManager : IProfileManager
             return false;
         }
 
-        if (data.Profiles.Any(p => p.Id == data.SelectedProfileId))
+        if (HasProfileId(data.Profiles, data.SelectedProfileId))
         {
             return false;
         }
@@ -492,6 +499,40 @@ public class ProfileManager : IProfileManager
     private static int NormalizePort(int port)
     {
         return port is >= 1 and <= 65535 ? port : 2028;
+    }
+
+    private static Profile? FindProfileById(List<Profile> profiles, int id)
+    {
+        for (var i = 0; i < profiles.Count; i++)
+        {
+            var profile = profiles[i];
+            if (profile.Id == id)
+            {
+                return profile;
+            }
+        }
+
+        return null;
+    }
+
+    private static int GetMaxProfileId(List<Profile> profiles)
+    {
+        var maxId = 0;
+        for (var i = 0; i < profiles.Count; i++)
+        {
+            var id = profiles[i].Id;
+            if (id > maxId)
+            {
+                maxId = id;
+            }
+        }
+
+        return maxId;
+    }
+
+    private static bool HasProfileId(List<Profile> profiles, int id)
+    {
+        return FindProfileById(profiles, id) != null;
     }
 
 }

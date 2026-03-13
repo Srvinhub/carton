@@ -1,8 +1,3 @@
-using System;
-using System.Collections.ObjectModel;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
@@ -11,6 +6,11 @@ using carton.GUI.Models;
 using carton.GUI.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Text;
+using System.Threading.Tasks;
 
 namespace carton.ViewModels;
 
@@ -173,18 +173,38 @@ public partial class LogsViewModel : PageViewModelBase, IDisposable
             return;
         }
 
-        var filtered = _logStore
-            .GetSnapshot()
-            .Where(MatchesFilter)
-            .Select(entry => new LogEntryViewModel
+        var snapshot = _logStore.GetSnapshot();
+        var filtered = new List<LogEntryViewModel>(snapshot.Count);
+        var selectedLog = SelectedLog;
+        var selectedExists = selectedLog == null;
+
+        for (var i = 0; i < snapshot.Count; i++)
+        {
+            var entry = snapshot[i];
+            if (!MatchesFilter(entry))
+            {
+                continue;
+            }
+
+            var log = new LogEntryViewModel
             {
                 Time = entry.Time,
                 Source = entry.Source,
                 SourceDisplayName = GetSourceDisplayName(entry.Source),
                 Level = entry.Level,
                 Message = entry.Message
-            })
-            .ToList();
+            };
+            filtered.Add(log);
+
+            if (!selectedExists &&
+                log.Time == selectedLog!.Time &&
+                log.Source == selectedLog.Source &&
+                log.Level == selectedLog.Level &&
+                log.Message == selectedLog.Message)
+            {
+                selectedExists = true;
+            }
+        }
 
         Logs.Clear();
         foreach (var log in filtered)
@@ -192,12 +212,7 @@ public partial class LogsViewModel : PageViewModelBase, IDisposable
             Logs.Add(log);
         }
 
-        if (SelectedLog != null &&
-            !Logs.Any(log =>
-                log.Time == SelectedLog.Time &&
-                log.Source == SelectedLog.Source &&
-                log.Level == SelectedLog.Level &&
-                log.Message == SelectedLog.Message))
+        if (!selectedExists)
         {
             SelectedLog = null;
         }
