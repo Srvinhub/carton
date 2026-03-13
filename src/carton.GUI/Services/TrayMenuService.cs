@@ -428,7 +428,7 @@ public sealed class TrayMenuService : IDisposable
             {
                 if (EnsureGroupsViewModelSubscribed())
                 {
-                    _groupsViewModel?.OnNavigatedTo();
+                    _groupsViewModel?.EnsureLoadedInBackground();
                 }
             }
             else

@@ -340,6 +340,10 @@ public partial class MainViewModel : ViewModelBase
         }
 
         _isWindowVisible = isVisible;
+        if (_activeGroupsViewModel != null)
+        {
+            _activeGroupsViewModel.SetWindowVisible(isVisible);
+        }
         if (_connectionsViewModel != null)
         {
             _connectionsViewModel.SetWindowVisible(isVisible);
@@ -358,6 +362,8 @@ public partial class MainViewModel : ViewModelBase
             _activeGroupsViewModel = groupsViewModel;
             OnPropertyChanged(nameof(ActiveGroupsViewModel));
         }
+
+        groupsViewModel.SetWindowVisible(_isWindowVisible);
 
         return groupsViewModel;
     }

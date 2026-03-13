@@ -22,8 +22,10 @@ public partial class GroupsViewModel : PageViewModelBase
     private readonly SemaphoreSlim _loadSemaphore = new(1, 1);
     private readonly ClashConfigCacheService _clashConfigCache;
     private readonly Dictionary<string, List<OutboundItemViewModel>> _outboundItemsByTag = new(StringComparer.OrdinalIgnoreCase);
-    private int _urlTestRefreshGeneration;
+    private readonly DispatcherTimer _urlTestRefreshTimer;
+    private bool _isRefreshingUrlTestGroups;
     private bool _isPageActive;
+    private bool _isWindowVisible = true;
 
     public override NavigationPage PageType => NavigationPage.Groups;
 
@@ -50,6 +52,11 @@ public partial class GroupsViewModel : PageViewModelBase
         Title = "Groups";
         Icon = "Group";
         _clashConfigCache = ClashConfigCacheService.Instance;
+        _urlTestRefreshTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(3)
+        };
+        _urlTestRefreshTimer.Tick += OnUrlTestRefreshTimerTick;
         Groups.CollectionChanged += OnGroupsCollectionChanged;
         UpdateGroupTabsVisibility();
     }
@@ -63,6 +70,7 @@ public partial class GroupsViewModel : PageViewModelBase
     public void OnNavigatedTo()
     {
         _isPageActive = true;
+        UpdateUrlTestRefreshState();
 
         if (_singBoxManager == null)
         {
@@ -86,7 +94,26 @@ public partial class GroupsViewModel : PageViewModelBase
     public void OnNavigatedFrom()
     {
         _isPageActive = false;
-        _urlTestRefreshGeneration++;
+        UpdateUrlTestRefreshState();
+    }
+
+    public void EnsureLoadedInBackground()
+    {
+        if (_singBoxManager?.IsRunning != true)
+        {
+            return;
+        }
+
+        if (Groups.Count == 0 || _clashConfigCache.IsDirty)
+        {
+            _ = LoadGroupsAsync();
+        }
+    }
+
+    public void SetWindowVisible(bool isVisible)
+    {
+        _isWindowVisible = isVisible;
+        UpdateUrlTestRefreshState();
     }
 
     private async Task LoadGroupsAsync()
@@ -110,7 +137,6 @@ public partial class GroupsViewModel : PageViewModelBase
                 await Dispatcher.UIThread.InvokeAsync(() =>
                 {
                     _outboundItemsByTag.Clear();
-                    _urlTestRefreshGeneration++;
                     Groups.Clear();
                     SelectedGroup = null;
                     StatusMessage = LocalizationService.Instance[WaitingForSingBoxResourceKey];
@@ -130,7 +156,6 @@ public partial class GroupsViewModel : PageViewModelBase
                 var previousSelection = SelectedGroup?.Name;
                 var preferGlobalGroup = string.Equals(clashConfig?.Mode, "global", StringComparison.OrdinalIgnoreCase);
                 _outboundItemsByTag.Clear();
-                _urlTestRefreshGeneration++;
                 Groups.Clear();
                 GroupItemViewModel? selected = null;
                 GroupItemViewModel? globalGroup = null;
@@ -199,7 +224,8 @@ public partial class GroupsViewModel : PageViewModelBase
             Dispatcher.UIThread.Post(UpdateSelectOutboundCommandStates);
             Dispatcher.UIThread.Post(UpdateTestDelayCommandStates);
             Dispatcher.UIThread.Post(() => TestCurrentGroupCommand.NotifyCanExecuteChanged());
-            _ = RefreshUrlTestGroupsUntilReadyAsync(_urlTestRefreshGeneration);
+            UpdateUrlTestRefreshState();
+            _ = RefreshUrlTestGroupsAsync();
         }
         catch (Exception ex)
         {
@@ -223,6 +249,7 @@ public partial class GroupsViewModel : PageViewModelBase
 
         if (status == ServiceStatus.Running)
         {
+            UpdateUrlTestRefreshState();
             _ = LoadGroupsAsync();
             return;
         }
@@ -232,7 +259,6 @@ public partial class GroupsViewModel : PageViewModelBase
             Dispatcher.UIThread.Post(() =>
             {
                 _outboundItemsByTag.Clear();
-                _urlTestRefreshGeneration++;
                 Groups.Clear();
                 SelectedGroup = null;
                 UpdateGroupTabsVisibility();
@@ -240,6 +266,7 @@ public partial class GroupsViewModel : PageViewModelBase
                     ? "sing-box failed to start"
                     : "sing-box is not running";
             });
+            UpdateUrlTestRefreshState();
         }
     }
 
@@ -387,14 +414,31 @@ public partial class GroupsViewModel : PageViewModelBase
         });
     }
 
-    private async Task RefreshUrlTestGroupsUntilReadyAsync(int generation)
+    private void OnUrlTestRefreshTimerTick(object? sender, EventArgs e)
     {
-        if (_singBoxManager?.IsRunning != true || !_isPageActive)
+        _ = RefreshUrlTestGroupsAsync();
+    }
+
+    private void UpdateUrlTestRefreshState()
+    {
+        if (_singBoxManager?.IsRunning == true && _isPageActive && _isWindowVisible)
+        {
+            _urlTestRefreshTimer.Start();
+            return;
+        }
+
+        _urlTestRefreshTimer.Stop();
+    }
+
+    private async Task RefreshUrlTestGroupsAsync()
+    {
+        if (_singBoxManager?.IsRunning != true || !_isPageActive || !_isWindowVisible || _isRefreshingUrlTestGroups)
         {
             return;
         }
 
-        while (generation == _urlTestRefreshGeneration && _singBoxManager.IsRunning && _isPageActive)
+        _isRefreshingUrlTestGroups = true;
+        try
         {
             var urlTestGroupNames = await Dispatcher.UIThread.InvokeAsync(() => Groups
                 .Where(group => string.Equals(group.Type, "URLTest", StringComparison.OrdinalIgnoreCase))
@@ -412,13 +456,10 @@ public partial class GroupsViewModel : PageViewModelBase
             catch
             {
             }
-
-            if (generation != _urlTestRefreshGeneration || !_singBoxManager.IsRunning || !_isPageActive)
-            {
-                return;
-            }
-
-            await Task.Delay(3000);
+        }
+        finally
+        {
+            _isRefreshingUrlTestGroups = false;
         }
     }
 
