@@ -32,6 +32,10 @@ public sealed class TrayMenuService : IDisposable
     private readonly Dictionary<GroupItemViewModel, NotifyCollectionChangedEventHandler> _groupItemsHandlers = new();
     private int _profilesRefreshPending;
     private int _groupsRefreshPending;
+    private int _profilesMenuHash;
+    private bool _hasProfilesMenuHash;
+    private int _groupsMenuHash;
+    private bool _hasGroupsMenuHash;
     private bool _isInitialized;
 
     public TrayMenuService()
@@ -225,6 +229,12 @@ public sealed class TrayMenuService : IDisposable
 
         if (_groupsMenuItem != null)
         {
+            var unavailableHash = ComputeUnavailableGroupsMenuHash();
+            if (_hasGroupsMenuHash && _groupsMenuHash == unavailableHash)
+            {
+                return;
+            }
+
             var menu = new NativeMenu();
             menu.Items.Add(new NativeMenuItem
             {
@@ -233,6 +243,8 @@ public sealed class TrayMenuService : IDisposable
             });
             _groupsMenuItem.Menu = menu;
             _groupsMenuItem.IsEnabled = false;
+            _groupsMenuHash = unavailableHash;
+            _hasGroupsMenuHash = true;
         }
     }
 
@@ -263,6 +275,12 @@ public sealed class TrayMenuService : IDisposable
         void Update()
         {
             Interlocked.Exchange(ref _profilesRefreshPending, 0);
+            var menuHash = ComputeProfilesMenuHash();
+            if (_hasProfilesMenuHash && _profilesMenuHash == menuHash)
+            {
+                return;
+            }
+
             var menu = new NativeMenu();
             if (_dashboardViewModel.AvailableProfiles.Count == 0)
             {
@@ -288,6 +306,8 @@ public sealed class TrayMenuService : IDisposable
             }
 
             _profilesMenuItem.Menu = menu;
+            _profilesMenuHash = menuHash;
+            _hasProfilesMenuHash = true;
         }
 
         RunOnUiThread(Update);
@@ -322,6 +342,12 @@ public sealed class TrayMenuService : IDisposable
         void Update()
         {
             Interlocked.Exchange(ref _groupsRefreshPending, 0);
+            var menuHash = ComputeGroupsMenuHash(groupsViewModel, _mainViewModel?.IsConnected == true);
+            if (_hasGroupsMenuHash && _groupsMenuHash == menuHash)
+            {
+                return;
+            }
+
             var menu = new NativeMenu();
             var hasGroups = groupsViewModel.Groups.Count > 0 && _mainViewModel?.IsConnected == true;
 
@@ -336,6 +362,8 @@ public sealed class TrayMenuService : IDisposable
                 });
                 _groupsMenuItem.Menu = menu;
                 _groupsMenuItem.IsEnabled = _mainViewModel?.IsConnected == true;
+                _groupsMenuHash = menuHash;
+                _hasGroupsMenuHash = true;
                 return;
             }
 
@@ -382,6 +410,8 @@ public sealed class TrayMenuService : IDisposable
 
             _groupsMenuItem.Menu = menu;
             _groupsMenuItem.IsEnabled = true;
+            _groupsMenuHash = menuHash;
+            _hasGroupsMenuHash = true;
         }
 
         RunOnUiThread(Update);
@@ -561,6 +591,9 @@ public sealed class TrayMenuService : IDisposable
 
     private void OnLanguageChanged(object? sender, AppLanguage e)
     {
+        _hasProfilesMenuHash = false;
+        _hasGroupsMenuHash = false;
+
         RunOnUiThread(() =>
         {
             if (_trayIcon != null)
@@ -629,5 +662,64 @@ public sealed class TrayMenuService : IDisposable
         {
             Dispatcher.UIThread.Post(action);
         }
+    }
+
+    private int ComputeProfilesMenuHash()
+    {
+        var hash = new HashCode();
+        hash.Add(_dashboardViewModel?.AvailableProfiles.Count ?? -1);
+
+        if (_dashboardViewModel == null || _dashboardViewModel.AvailableProfiles.Count == 0)
+        {
+            hash.Add(_localizationService["Tray.Profiles.Empty"]);
+            return hash.ToHashCode();
+        }
+
+        foreach (var profile in _dashboardViewModel.AvailableProfiles)
+        {
+            hash.Add(profile.Name, StringComparer.Ordinal);
+            hash.Add(profile.IsSelected);
+        }
+
+        return hash.ToHashCode();
+    }
+
+    private int ComputeGroupsMenuHash(GroupsViewModel groupsViewModel, bool isConnected)
+    {
+        var hash = new HashCode();
+        hash.Add(isConnected);
+        hash.Add(groupsViewModel.Groups.Count);
+        hash.Add(_localizationService["Tray.Groups.Empty"]);
+        hash.Add(_localizationService["Tray.Groups.Unavailable"]);
+        hash.Add(_localizationService["Common.Unknown"]);
+
+        foreach (var group in groupsViewModel.Groups)
+        {
+            hash.Add(group.Name, StringComparer.Ordinal);
+            hash.Add(group.Type, StringComparer.OrdinalIgnoreCase);
+            hash.Add(group.Items?.Count ?? -1);
+
+            if (group.Items == null)
+            {
+                continue;
+            }
+
+            foreach (var outbound in group.Items)
+            {
+                hash.Add(outbound.Tag, StringComparer.Ordinal);
+                hash.Add(outbound.Delay);
+                hash.Add(outbound.IsSelected);
+            }
+        }
+
+        return hash.ToHashCode();
+    }
+
+    private int ComputeUnavailableGroupsMenuHash()
+    {
+        var hash = new HashCode();
+        hash.Add(false);
+        hash.Add(_localizationService["Tray.Groups.Unavailable"]);
+        return hash.ToHashCode();
     }
 }
