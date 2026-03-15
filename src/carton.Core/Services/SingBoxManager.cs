@@ -1869,18 +1869,19 @@ public class SingBoxManager : ISingBoxManager, IDisposable
         var shellCommand =
             $"{QuoteShellArg(_singBoxPath)} run -c {QuoteShellArg(configPath)} < /dev/null >> {QuoteShellArg(logPath)} 2>&1 & echo $!";
 
-        using var process = new Process
+        var startInfo = new ProcessStartInfo
         {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = "pkexec",
-                Arguments = $"/bin/sh -lc {QuoteShellArg(shellCommand)}",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            }
+            FileName = "pkexec",
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
         };
+        startInfo.ArgumentList.Add("/bin/sh");
+        startInfo.ArgumentList.Add("-lc");
+        startInfo.ArgumentList.Add(shellCommand);
+
+        using var process = new Process { StartInfo = startInfo };
 
         try
         {
@@ -2258,18 +2259,19 @@ public class SingBoxManager : ISingBoxManager, IDisposable
 
     private static async Task RunPkexecCommandAsync(string shellCommand)
     {
-        using var process = new Process
+        var startInfo = new ProcessStartInfo
         {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = "pkexec",
-                Arguments = $"/bin/sh -lc {QuoteShellArg(shellCommand)}",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            }
+            FileName = "pkexec",
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
         };
+        startInfo.ArgumentList.Add("/bin/sh");
+        startInfo.ArgumentList.Add("-lc");
+        startInfo.ArgumentList.Add(shellCommand);
+
+        using var process = new Process { StartInfo = startInfo };
 
         process.Start();
         await process.WaitForExitAsync();
