@@ -30,6 +30,7 @@
   <x:String x:Key="Groups.Label.Current">当前：</x:String>
   <x:String x:Key="Connections.Button.CloseAll">关闭全部</x:String>
   <x:String x:Key="Connections.Button.Close">关闭</x:String>
+  <x:String x:Key="Connections.Search.Watermark">搜索连接...</x:String>
   <x:String x:Key="Connections.Label.CountPrefix">连接数： </x:String>
   <x:String x:Key="Logs.Button.Clear">清空</x:String>
   <x:String x:Key="Logs.Button.CopySelected">复制选中</x:String>

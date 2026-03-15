@@ -9,17 +9,27 @@
              x:DataType="vm:ConnectionsViewModel">
 
   <Grid RowDefinitions="Auto,*">
-    <DockPanel Grid.Row="0" Margin="16" LastChildFill="False">
-      <Button Content="{DynamicResource Connections.Button.CloseAll}"
+    <Grid Grid.Row="0"
+          Margin="16"
+          ColumnDefinitions="Auto,*,Auto"
+          ColumnSpacing="12">
+      <Button Grid.Column="0"
+              Content="{DynamicResource Connections.Button.CloseAll}"
               Command="{Binding CloseAllCommand}"
-              Padding="12,6"
-              Margin="0,0,12,0"/>
-      <TextBlock DockPanel.Dock="Right"
+              Padding="12,6"/>
+      <TextBox Grid.Column="1"
+               Text="{Binding SearchText}"
+               Watermark="{DynamicResource Connections.Search.Watermark}"
+               MinWidth="220"
+               HorizontalAlignment="Stretch"/>
+      <TextBlock Grid.Column="2"
                  VerticalAlignment="Center">
         <Run Text="{DynamicResource Connections.Label.CountPrefix}"/>
+        <Run Text="{Binding VisibleConnectionCount}"/>
+        <Run Text="/"/>
         <Run Text="{Binding ConnectionCount}"/>
       </TextBlock>
-    </DockPanel>
+    </Grid>
 
     <Border Grid.Row="1" Margin="16"
             BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"

@@ -30,6 +30,7 @@
   <x:String x:Key="Groups.Label.Current">Current: </x:String>
   <x:String x:Key="Connections.Button.CloseAll">Close All</x:String>
   <x:String x:Key="Connections.Button.Close">Close</x:String>
+  <x:String x:Key="Connections.Search.Watermark">Search connections...</x:String>
   <x:String x:Key="Connections.Label.CountPrefix">Connections: </x:String>
   <x:String x:Key="Logs.Button.Clear">Clear</x:String>
   <x:String x:Key="Logs.Button.CopySelected">Copy Selected</x:String>
