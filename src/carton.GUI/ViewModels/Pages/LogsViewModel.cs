@@ -195,42 +195,36 @@ public partial class LogsViewModel : PageViewModelBase, IDisposable
         }
 
         var snapshot = _logStore.GetSnapshot();
-        var reusableLogs = new Dictionary<(string Time, LogSource Source, string Level, string Message), Queue<LogEntryViewModel>>(Logs.Count);
-        for (var i = 0; i < Logs.Count; i++)
-        {
-            var existing = Logs[i];
-            var key = (existing.Time, existing.Source, existing.Level, existing.Message);
-            if (!reusableLogs.TryGetValue(key, out var queue))
-            {
-                queue = new Queue<LogEntryViewModel>();
-                reusableLogs[key] = queue;
-            }
+        var selectedLevel = SelectedLevel;
+        var selectedFilter = SelectedSourceFilter?.Filter ?? LogSourceFilter.All;
+        var searchText = SearchText;
+        var hasSearchText = !string.IsNullOrWhiteSpace(searchText);
+        var cartonSourceDisplayName = _localizationService["Logs.Source.Carton"];
+        var singBoxSourceDisplayName = _localizationService["Logs.Source.SingBox"];
 
-            queue.Enqueue(existing);
-        }
-
-        var filtered = new List<LogEntryViewModel>(snapshot.Count);
+        var writeIndex = 0;
         var selectedLog = SelectedLog;
         var selectedExists = selectedLog == null;
+        var selectedTime = selectedLog?.Time;
+        var selectedSource = selectedLog?.Source;
+        var selectedLevelText = selectedLog?.Level;
+        var selectedMessage = selectedLog?.Message;
+        LogEntryViewModel? matchedSelectedLog = null;
 
         for (var i = 0; i < snapshot.Count; i++)
         {
             var entry = snapshot[i];
-            if (!MatchesFilter(entry))
+            if (!MatchesFilter(entry, selectedLevel, selectedFilter, searchText, hasSearchText, cartonSourceDisplayName, singBoxSourceDisplayName))
             {
                 continue;
             }
 
-            var key = (entry.Time, entry.Source, entry.Level, entry.Message);
+            var sourceDisplayName = GetSourceDisplayName(entry.Source, cartonSourceDisplayName, singBoxSourceDisplayName);
             LogEntryViewModel log;
-            if (reusableLogs.TryGetValue(key, out var queue) && queue.Count > 0)
+            if (writeIndex < Logs.Count)
             {
-                log = queue.Dequeue();
-                var sourceDisplayName = GetSourceDisplayName(entry.Source);
-                if (!string.Equals(log.SourceDisplayName, sourceDisplayName, StringComparison.Ordinal))
-                {
-                    log.SourceDisplayName = sourceDisplayName;
-                }
+                log = Logs[writeIndex];
+                UpdateLog(log, entry, sourceDisplayName);
             }
             else
             {
@@ -242,55 +236,82 @@ public partial class LogsViewModel : PageViewModelBase, IDisposable
                     Level = entry.Level,
                     Message = entry.Message
                 };
+
+                Logs.Add(log);
             }
 
-            filtered.Add(log);
+            writeIndex++;
 
             if (!selectedExists &&
-                log.Time == selectedLog!.Time &&
-                log.Source == selectedLog.Source &&
-                log.Level == selectedLog.Level &&
-                log.Message == selectedLog.Message)
+                log.Time == selectedTime &&
+                log.Source == selectedSource &&
+                log.Level == selectedLevelText &&
+                log.Message == selectedMessage)
             {
                 selectedExists = true;
+                matchedSelectedLog = log;
             }
         }
 
-        var commonCount = Math.Min(Logs.Count, filtered.Count);
-        for (var i = 0; i < commonCount; i++)
-        {
-            if (!ReferenceEquals(Logs[i], filtered[i]))
-            {
-                Logs[i] = filtered[i];
-            }
-        }
-
-        for (var i = Logs.Count - 1; i >= filtered.Count; i--)
+        for (var i = Logs.Count - 1; i >= writeIndex; i--)
         {
             Logs.RemoveAt(i);
-        }
-
-        for (var i = Logs.Count; i < filtered.Count; i++)
-        {
-            Logs.Add(filtered[i]);
         }
 
         if (!selectedExists)
         {
             SelectedLog = null;
         }
+        else if (matchedSelectedLog != null && !ReferenceEquals(SelectedLog, matchedSelectedLog))
+        {
+            SelectedLog = matchedSelectedLog;
+        }
     }
 
-    private bool MatchesFilter(LogEntryRecord log)
+    private static void UpdateLog(LogEntryViewModel log, LogEntryRecord entry, string sourceDisplayName)
     {
-        var levelMatched = SelectedLevel == "All" ||
-                           string.Equals(log.Level, SelectedLevel, StringComparison.OrdinalIgnoreCase);
+        if (!string.Equals(log.Time, entry.Time, StringComparison.Ordinal))
+        {
+            log.Time = entry.Time;
+        }
+
+        if (log.Source != entry.Source)
+        {
+            log.Source = entry.Source;
+        }
+
+        if (!string.Equals(log.SourceDisplayName, sourceDisplayName, StringComparison.Ordinal))
+        {
+            log.SourceDisplayName = sourceDisplayName;
+        }
+
+        if (!string.Equals(log.Level, entry.Level, StringComparison.Ordinal))
+        {
+            log.Level = entry.Level;
+        }
+
+        if (!string.Equals(log.Message, entry.Message, StringComparison.Ordinal))
+        {
+            log.Message = entry.Message;
+        }
+    }
+
+    private static bool MatchesFilter(
+        LogEntryRecord log,
+        string selectedLevel,
+        LogSourceFilter selectedFilter,
+        string searchText,
+        bool hasSearchText,
+        string cartonSourceDisplayName,
+        string singBoxSourceDisplayName)
+    {
+        var levelMatched = selectedLevel == "All" ||
+                           string.Equals(log.Level, selectedLevel, StringComparison.OrdinalIgnoreCase);
         if (!levelMatched)
         {
             return false;
         }
 
-        var selectedFilter = SelectedSourceFilter?.Filter ?? LogSourceFilter.All;
         var sourceMatched = selectedFilter switch
         {
             LogSourceFilter.All => true,
@@ -303,16 +324,16 @@ public partial class LogsViewModel : PageViewModelBase, IDisposable
             return false;
         }
 
-        if (string.IsNullOrWhiteSpace(SearchText))
+        if (!hasSearchText)
         {
             return true;
         }
 
-        var sourceDisplayName = GetSourceDisplayName(log.Source);
-        return log.Message.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
-               sourceDisplayName.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
-               log.Level.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
-               log.Time.Contains(SearchText, StringComparison.OrdinalIgnoreCase);
+        var sourceDisplayName = GetSourceDisplayName(log.Source, cartonSourceDisplayName, singBoxSourceDisplayName);
+        return log.Message.Contains(searchText, StringComparison.OrdinalIgnoreCase) ||
+               sourceDisplayName.Contains(searchText, StringComparison.OrdinalIgnoreCase) ||
+               log.Level.Contains(searchText, StringComparison.OrdinalIgnoreCase) ||
+               log.Time.Contains(searchText, StringComparison.OrdinalIgnoreCase);
     }
 
     private void InitializeSourceFilters()
@@ -351,6 +372,16 @@ public partial class LogsViewModel : PageViewModelBase, IDisposable
         {
             LogSource.Carton => _localizationService["Logs.Source.Carton"],
             LogSource.SingBox => _localizationService["Logs.Source.SingBox"],
+            _ => source.ToString()
+        };
+    }
+
+    private static string GetSourceDisplayName(LogSource source, string cartonSourceDisplayName, string singBoxSourceDisplayName)
+    {
+        return source switch
+        {
+            LogSource.Carton => cartonSourceDisplayName,
+            LogSource.SingBox => singBoxSourceDisplayName,
             _ => source.ToString()
         };
     }
