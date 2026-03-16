@@ -4,6 +4,8 @@
 
 `carton` is a desktop client powered by `sing-box`. The project aims to stay as close as possible to the official SFM experience in interaction flow and information layout, while focusing on high performance and a few practical extra features.
 
+The project currently targets `Windows` and `Linux`. There are no plans to publish a `macOS` version, because SFM already exists on macOS.
+
 The project is still in an early stage, but its direction is already clear:
 
 - Keep the experience close to official SFM to reduce migration cost
@@ -60,6 +62,12 @@ The project is still in an early stage, but its direction is already clear:
 - `Velopack`
 
 ## Development and Build
+
+### Platforms
+
+- Supports `Windows`
+- Supports `Linux`
+- No `macOS` release is planned, because SFM already exists on macOS
 
 ### Requirements
 
