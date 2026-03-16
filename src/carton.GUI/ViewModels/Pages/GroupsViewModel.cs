@@ -35,6 +35,9 @@ public partial class GroupsViewModel : PageViewModelBase
     private GroupItemViewModel? _selectedGroup;
 
     [ObservableProperty]
+    private IReadOnlyList<GroupMenuSnapshot> _trayGroups = Array.Empty<GroupMenuSnapshot>();
+
+    [ObservableProperty]
     private bool _isLoading;
 
     [ObservableProperty]
@@ -89,6 +92,8 @@ public partial class GroupsViewModel : PageViewModelBase
     {
         _isPageActive = false;
         UpdateUrlTestRefreshState();
+        _groupExpandStates.Clear();
+        ReleaseViewGroups(clearStatusMessage: false);
     }
 
     public void EnsureLoadedInBackground()
@@ -98,7 +103,7 @@ public partial class GroupsViewModel : PageViewModelBase
             return;
         }
 
-        if (Groups.Count == 0 || _clashConfigCache.IsDirty)
+        if (TrayGroups.Count == 0 || _clashConfigCache.IsDirty)
         {
             _ = LoadGroupsAsync();
         }
@@ -130,9 +135,8 @@ public partial class GroupsViewModel : PageViewModelBase
             {
                 await Dispatcher.UIThread.InvokeAsync(() =>
                 {
-                    _outboundItemsByTag.Clear();
-                    Groups.Clear();
-                    SelectedGroup = null;
+                    ReleaseViewGroups(clearStatusMessage: false);
+                    TrayGroups = Array.Empty<GroupMenuSnapshot>();
                     StatusMessage = LocalizationService.Instance[WaitingForSingBoxResourceKey];
                 });
                 return;
@@ -152,10 +156,22 @@ public partial class GroupsViewModel : PageViewModelBase
 
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
+                var trayGroups = BuildTrayGroupsFromOutboundGroups(filteredGroups);
+                TrayGroups = trayGroups;
+
+                if (!_isPageActive)
+                {
+                    ReleaseViewGroups(clearStatusMessage: false);
+                    StatusMessage = trayGroups.Count > 0
+                        ? $"Loaded {trayGroups.Count} groups"
+                        : "No groups available";
+                    return;
+                }
+
                 var previousSelection = SelectedGroup?.Name;
                 var preferGlobalGroup = string.Equals(clashConfig?.Mode, "global", StringComparison.OrdinalIgnoreCase);
-                _outboundItemsByTag.Clear();
-                Groups.Clear();
+                var resolvedDelayLookup = CreateResolvedDelayLookup(filteredGroups);
+                ReleaseViewGroups(clearStatusMessage: false);
                 GroupItemViewModel? selected = null;
                 GroupItemViewModel? globalGroup = null;
                 GroupItemViewModel? firstGroup = null;
@@ -171,6 +187,7 @@ public partial class GroupsViewModel : PageViewModelBase
                         {
                             Tag = item.Tag,
                             Type = item.Type,
+                            Delay = resolvedDelayLookup.TryGetValue(item.Tag, out var delay) ? delay : 0,
                             RawDelay = item.UrlTestDelay
                         });
                     }
@@ -221,7 +238,6 @@ public partial class GroupsViewModel : PageViewModelBase
                 SelectedGroup = preferGlobalGroup
                     ? globalGroup ?? selected ?? firstGroup
                     : selected ?? firstGroup;
-                RecalculateEffectiveDelays();
                 StatusMessage = Groups.Count > 0
                     ? $"Loaded {Groups.Count} groups"
                     : "No groups available";
@@ -232,6 +248,7 @@ public partial class GroupsViewModel : PageViewModelBase
             Dispatcher.UIThread.Post(UpdateTestDelayCommandStates);
             Dispatcher.UIThread.Post(() => TestCurrentGroupCommand.NotifyCanExecuteChanged());
             Dispatcher.UIThread.Post(() => TestGroupCardCommand.NotifyCanExecuteChanged());
+            Dispatcher.UIThread.Post(UpdateTrayGroupsFromLoadedGroups);
             UpdateUrlTestRefreshState();
             _ = RefreshUrlTestGroupsAsync();
         }
@@ -267,9 +284,8 @@ public partial class GroupsViewModel : PageViewModelBase
         {
             Dispatcher.UIThread.Post(() =>
             {
-                _outboundItemsByTag.Clear();
-                Groups.Clear();
-                SelectedGroup = null;
+                ReleaseViewGroups(clearStatusMessage: false);
+                TrayGroups = Array.Empty<GroupMenuSnapshot>();
                 StatusMessage = status == ServiceStatus.Error
                     ? "sing-box failed to start"
                     : "sing-box is not running";
@@ -305,31 +321,68 @@ public partial class GroupsViewModel : PageViewModelBase
 
     private void RecalculateEffectiveDelays()
     {
+        var selectedOutboundByGroup = new Dictionary<string, string>(Groups.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var group in Groups)
+        {
+            selectedOutboundByGroup[group.Name] = group.SelectedOutbound;
+        }
+
+        var rawDelayByTag = CreateRawDelayLookup(_outboundItemsByTag);
+        var resolvedDelayLookup = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var group in Groups)
         {
             foreach (var item in group.Items)
             {
-                item.Delay = ResolveEffectiveDelay(item.Tag, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+                item.Delay = ResolveEffectiveDelay(
+                    item.Tag,
+                    selectedOutboundByGroup,
+                    rawDelayByTag,
+                    resolvedDelayLookup,
+                    new HashSet<string>(StringComparer.OrdinalIgnoreCase));
             }
         }
     }
 
-    private int ResolveEffectiveDelay(string tag, HashSet<string> visitedTags)
+    private static int ResolveEffectiveDelay(
+        string tag,
+        IReadOnlyDictionary<string, string> selectedOutboundByGroup,
+        IReadOnlyDictionary<string, int> rawDelayByTag,
+        Dictionary<string, int> resolvedDelayLookup,
+        HashSet<string> visitedTags)
     {
-        if (string.IsNullOrWhiteSpace(tag) || !visitedTags.Add(tag))
+        if (string.IsNullOrWhiteSpace(tag))
         {
             return 0;
         }
 
-        var group = FindGroupByName(tag);
-        if (group != null &&
-            !string.IsNullOrWhiteSpace(group.SelectedOutbound) &&
-            !string.Equals(group.SelectedOutbound, tag, StringComparison.OrdinalIgnoreCase))
+        if (resolvedDelayLookup.TryGetValue(tag, out var cachedDelay))
         {
-            return ResolveEffectiveDelay(group.SelectedOutbound, visitedTags);
+            return cachedDelay;
         }
 
-        return GetSharedRawDelay(tag);
+        if (!visitedTags.Add(tag))
+        {
+            return 0;
+        }
+
+        if (selectedOutboundByGroup.TryGetValue(tag, out var selectedOutbound) &&
+            !string.IsNullOrWhiteSpace(selectedOutbound) &&
+            !string.Equals(selectedOutbound, tag, StringComparison.OrdinalIgnoreCase))
+        {
+            var resolvedDelay = ResolveEffectiveDelay(
+                selectedOutbound,
+                selectedOutboundByGroup,
+                rawDelayByTag,
+                resolvedDelayLookup,
+                visitedTags);
+            resolvedDelayLookup[tag] = resolvedDelay;
+            return resolvedDelay;
+        }
+
+        var delay = rawDelayByTag.TryGetValue(tag, out var rawDelay) ? rawDelay : 0;
+        resolvedDelayLookup[tag] = delay;
+        return delay;
     }
 
     private static bool ShouldDisplayGroup(OutboundGroup group, ClashConfigSnapshot? clashConfig)
@@ -386,6 +439,14 @@ public partial class GroupsViewModel : PageViewModelBase
                 }
 
                 RecalculateEffectiveDelays();
+                if (Groups.Count > 0)
+                {
+                    UpdateTrayGroupsFromLoadedGroups();
+                }
+                else
+                {
+                    UpdateTrayGroupSelection(groupTag, outboundTag);
+                }
                 StatusMessage = $"Selected {outboundTag} for {groupTag}";
             });
         }
@@ -462,6 +523,7 @@ public partial class GroupsViewModel : PageViewModelBase
             }
 
             RecalculateEffectiveDelays();
+            UpdateTrayGroupsFromLoadedGroups();
         });
     }
 
@@ -532,6 +594,7 @@ public partial class GroupsViewModel : PageViewModelBase
             var delay = delays.TryGetValue(item.Tag, out var value) && value >= 0 ? value : 0;
             ApplySharedRawDelay(item.Tag, delay);
             RecalculateEffectiveDelays();
+            UpdateTrayGroupsFromLoadedGroups();
             StatusMessage = item.Delay > 0
                 ? $"{item.Tag}: {item.Delay}ms"
                 : $"{item.Tag}: timeout";
@@ -707,6 +770,7 @@ public partial class GroupsViewModel : PageViewModelBase
 
             if (updateTestingState)
             {
+                UpdateTrayGroupsFromLoadedGroups();
                 StatusMessage = $"Test completed: {group.Name}";
             }
         }
@@ -804,6 +868,7 @@ public partial class GroupsViewModel : PageViewModelBase
 
             if (updateTestingState)
             {
+                UpdateTrayGroupsFromLoadedGroups();
                 StatusMessage = $"Test completed: {group.Name}";
             }
         }
@@ -859,6 +924,11 @@ public partial class GroupsViewModel : PageViewModelBase
 
         SelectedGroup = group;
         await TestGroupAsync(group, updateTestingState: true, onlyTestMissingDelay: false);
+    }
+
+    public Task SelectOutboundFromTrayAsync(string groupTag, string outboundTag)
+    {
+        return SelectOutboundAsync(groupTag, outboundTag);
     }
 
     private GroupItemViewModel? FindGroupByName(string groupName)
@@ -941,6 +1011,156 @@ public partial class GroupsViewModel : PageViewModelBase
         }
 
         return 0;
+    }
+
+    private static Dictionary<string, int> CreateRawDelayLookup(
+        IReadOnlyDictionary<string, List<OutboundItemViewModel>> outboundItemsByTag)
+    {
+        var rawDelayByTag = new Dictionary<string, int>(outboundItemsByTag.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in outboundItemsByTag)
+        {
+            var delay = GetFirstPositiveRawDelay(entry.Value);
+            if (delay > 0)
+            {
+                rawDelayByTag[entry.Key] = delay;
+            }
+        }
+
+        return rawDelayByTag;
+    }
+
+    private static Dictionary<string, int> CreateResolvedDelayLookup(IReadOnlyList<OutboundGroup> groups)
+    {
+        var selectedOutboundByGroup = new Dictionary<string, string>(groups.Count, StringComparer.OrdinalIgnoreCase);
+        var rawDelayByTag = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        for (var i = 0; i < groups.Count; i++)
+        {
+            var group = groups[i];
+            selectedOutboundByGroup[group.Tag] = group.Selected;
+            for (var j = 0; j < group.Items.Count; j++)
+            {
+                var item = group.Items[j];
+                if (item.UrlTestDelay > 0 && !rawDelayByTag.ContainsKey(item.Tag))
+                {
+                    rawDelayByTag[item.Tag] = item.UrlTestDelay;
+                }
+            }
+        }
+
+        var resolvedDelayLookup = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in rawDelayByTag)
+        {
+            ResolveEffectiveDelay(
+                entry.Key,
+                selectedOutboundByGroup,
+                rawDelayByTag,
+                resolvedDelayLookup,
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        }
+
+        return resolvedDelayLookup;
+    }
+
+    private static IReadOnlyList<GroupMenuSnapshot> BuildTrayGroupsFromOutboundGroups(IReadOnlyList<OutboundGroup> groups)
+    {
+        var resolvedDelayLookup = CreateResolvedDelayLookup(groups);
+        var trayGroups = new List<GroupMenuSnapshot>(groups.Count);
+        for (var i = 0; i < groups.Count; i++)
+        {
+            var group = groups[i];
+            var trayItems = new List<OutboundMenuSnapshot>(group.Items.Count);
+            for (var j = 0; j < group.Items.Count; j++)
+            {
+                var item = group.Items[j];
+                trayItems.Add(new OutboundMenuSnapshot(
+                    item.Tag,
+                    resolvedDelayLookup.TryGetValue(item.Tag, out var delay) ? delay : 0,
+                    string.Equals(item.Tag, group.Selected, StringComparison.OrdinalIgnoreCase)));
+            }
+
+            trayGroups.Add(new GroupMenuSnapshot(
+                group.Tag,
+                group.Type,
+                !string.Equals(group.Type, "URLTest", StringComparison.OrdinalIgnoreCase),
+                trayItems));
+        }
+
+        return trayGroups;
+    }
+
+    private void UpdateTrayGroupsFromLoadedGroups()
+    {
+        if (Groups.Count == 0)
+        {
+            return;
+        }
+
+        var trayGroups = new List<GroupMenuSnapshot>(Groups.Count);
+        foreach (var group in Groups)
+        {
+            var trayItems = new List<OutboundMenuSnapshot>(group.Items.Count);
+            foreach (var item in group.Items)
+            {
+                trayItems.Add(new OutboundMenuSnapshot(item.Tag, item.Delay, item.IsSelected));
+            }
+
+            trayGroups.Add(new GroupMenuSnapshot(
+                group.Name,
+                group.Type,
+                !string.Equals(group.Type, "URLTest", StringComparison.OrdinalIgnoreCase),
+                trayItems));
+        }
+
+        TrayGroups = trayGroups;
+    }
+
+    private void UpdateTrayGroupSelection(string groupTag, string outboundTag)
+    {
+        if (TrayGroups.Count == 0)
+        {
+            return;
+        }
+
+        var updatedGroups = new List<GroupMenuSnapshot>(TrayGroups.Count);
+        var hasChanges = false;
+
+        foreach (var group in TrayGroups)
+        {
+            if (!string.Equals(group.Name, groupTag, StringComparison.OrdinalIgnoreCase))
+            {
+                updatedGroups.Add(group);
+                continue;
+            }
+
+            var updatedItems = new List<OutboundMenuSnapshot>(group.Items.Count);
+            foreach (var item in group.Items)
+            {
+                var isSelected = string.Equals(item.Tag, outboundTag, StringComparison.OrdinalIgnoreCase);
+                updatedItems.Add(item with { IsSelected = isSelected });
+                hasChanges |= item.IsSelected != isSelected;
+            }
+
+            updatedGroups.Add(group with { Items = updatedItems });
+        }
+
+        if (hasChanges)
+        {
+            TrayGroups = updatedGroups;
+        }
+    }
+
+    private void ReleaseViewGroups(bool clearStatusMessage)
+    {
+        _outboundItemsByTag.Clear();
+        Groups.Clear();
+        SelectedGroup = null;
+        IsTestingGroup = false;
+
+        if (clearStatusMessage)
+        {
+            StatusMessage = string.Empty;
+        }
     }
 
     private List<OutboundItemViewModel> BuildUniqueOutboundTargets(
@@ -1163,3 +1383,11 @@ public partial class OutboundItemViewModel : ObservableObject
         OnPropertyChanged(nameof(DelayDisplay));
     }
 }
+
+public sealed record OutboundMenuSnapshot(string Tag, int Delay, bool IsSelected);
+
+public sealed record GroupMenuSnapshot(
+    string Name,
+    string Type,
+    bool IsSelectable,
+    IReadOnlyList<OutboundMenuSnapshot> Items);

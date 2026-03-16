@@ -30,7 +30,6 @@ public sealed class TrayMenuService : IDisposable
     private NativeMenuItem? _profilesMenuItem;
     private NativeMenuItem? _groupsMenuItem;
     private NativeMenuItem? _profilesEmptyMenuItem;
-    private readonly Dictionary<GroupItemViewModel, NotifyCollectionChangedEventHandler> _groupItemsHandlers = new();
     private readonly Dictionary<DashboardProfileItemViewModel, NativeMenuItem> _profileMenuItems = new();
     private int _profilesRefreshPending;
     private int _groupsRefreshPending;
@@ -94,11 +93,7 @@ public sealed class TrayMenuService : IDisposable
 
         if (_groupsViewModel != null)
         {
-            _groupsViewModel.Groups.CollectionChanged -= OnGroupsCollectionChanged;
-            foreach (var group in _groupsViewModel.Groups)
-            {
-                DetachGroupHandlers(group);
-            }
+            _groupsViewModel.PropertyChanged -= OnGroupsViewModelPropertyChanged;
         }
 
         if (_trayIcon != null)
@@ -208,11 +203,7 @@ public sealed class TrayMenuService : IDisposable
         }
 
         _groupsViewModel = _mainViewModel.EnsureGroupsViewModel();
-        _groupsViewModel.Groups.CollectionChanged += OnGroupsCollectionChanged;
-        foreach (var group in _groupsViewModel.Groups)
-        {
-            AttachGroupHandlers(group);
-        }
+        _groupsViewModel.PropertyChanged += OnGroupsViewModelPropertyChanged;
 
         return true;
     }
@@ -221,12 +212,7 @@ public sealed class TrayMenuService : IDisposable
     {
         if (_groupsViewModel != null)
         {
-            _groupsViewModel.Groups.CollectionChanged -= OnGroupsCollectionChanged;
-            foreach (var group in _groupsViewModel.Groups)
-            {
-                DetachGroupHandlers(group);
-            }
-
+            _groupsViewModel.PropertyChanged -= OnGroupsViewModelPropertyChanged;
             _groupsViewModel = null;
         }
 
@@ -315,9 +301,10 @@ public sealed class TrayMenuService : IDisposable
             Interlocked.Exchange(ref _groupsRefreshPending, 0);
             var menu = new NativeMenu();
             var isConnected = _mainViewModel?.IsConnected == true;
-            var hasGroups = groupsViewModel.Groups.Count > 0 && isConnected;
+            var trayGroups = groupsViewModel.TrayGroups;
+            var hasGroups = trayGroups.Count > 0 && isConnected;
             var menuHash = hasGroups
-                ? ComputeGroupsMenuHash(groupsViewModel, true)
+                ? ComputeGroupsMenuHash(trayGroups, true)
                 : ComputeGroupsStateHash(isConnected, isEmptyState: isConnected);
 
             if (_hasGroupsMenuHash && _groupsMenuHash == menuHash)
@@ -341,9 +328,8 @@ public sealed class TrayMenuService : IDisposable
                 return;
             }
 
-            foreach (var group in groupsViewModel.Groups)
+            foreach (var group in trayGroups)
             {
-                var isSelectableGroup = !string.Equals(group.Type, "URLTest", StringComparison.OrdinalIgnoreCase);
                 var groupMenu = new NativeMenu();
                 foreach (var outbound in group.Items)
                 {
@@ -356,9 +342,9 @@ public sealed class TrayMenuService : IDisposable
                         Header = outboundHeader + delaySuffix,
                         IsChecked = outbound.IsSelected,
                         ToggleType = NativeMenuItemToggleType.CheckBox,
-                        IsEnabled = isSelectableGroup
+                        IsEnabled = group.IsSelectable
                     };
-                    outboundItem.Click += (_, _) => SelectOutbound(group, outbound.Tag);
+                    outboundItem.Click += (_, _) => SelectOutbound(group.Name, outbound.Tag);
                     groupMenu.Items.Add(outboundItem);
                 }
 
@@ -401,21 +387,14 @@ public sealed class TrayMenuService : IDisposable
         RunOnUiThread(() => _ = _dashboardViewModel.SelectStartupProfileCommand.ExecuteAsync(profile));
     }
 
-    private void SelectOutbound(GroupItemViewModel group, string? outboundTag)
+    private void SelectOutbound(string groupTag, string? outboundTag)
     {
-        if (string.IsNullOrWhiteSpace(outboundTag) ||
-            string.Equals(group.Type, "URLTest", StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrWhiteSpace(outboundTag) || _groupsViewModel == null)
         {
             return;
         }
 
-        var command = group.SelectOutboundCommand;
-        if (command == null || !command.CanExecute(outboundTag))
-        {
-            return;
-        }
-
-        RunOnUiThread(() => _ = command.ExecuteAsync(outboundTag));
+        RunOnUiThread(() => _ = _groupsViewModel.SelectOutboundFromTrayAsync(groupTag, outboundTag));
     }
 
     private async Task ToggleServiceAsync()
@@ -505,59 +484,9 @@ public sealed class TrayMenuService : IDisposable
         }
     }
 
-    private void OnGroupsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    private void OnGroupsViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.OldItems != null)
-        {
-            foreach (GroupItemViewModel group in e.OldItems)
-            {
-                DetachGroupHandlers(group);
-            }
-        }
-
-        if (e.NewItems != null)
-        {
-            foreach (GroupItemViewModel group in e.NewItems)
-            {
-                AttachGroupHandlers(group);
-            }
-        }
-
-        RefreshGroupsMenu();
-    }
-
-    private void AttachGroupHandlers(GroupItemViewModel group)
-    {
-        group.PropertyChanged += OnGroupPropertyChanged;
-        if (group.Items != null)
-        {
-            NotifyCollectionChangedEventHandler handler = (_, _) => RefreshGroupsMenu();
-            group.Items.CollectionChanged += handler;
-            _groupItemsHandlers[group] = handler;
-        }
-    }
-
-    private void DetachGroupHandlers(GroupItemViewModel group)
-    {
-        group.PropertyChanged -= OnGroupPropertyChanged;
-        if (_groupItemsHandlers.TryGetValue(group, out var handler) && group.Items != null)
-        {
-            group.Items.CollectionChanged -= handler;
-            _groupItemsHandlers.Remove(group);
-        }
-    }
-
-    private void OnGroupPropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(GroupItemViewModel.Items) && sender is GroupItemViewModel group)
-        {
-            DetachGroupHandlers(group);
-            AttachGroupHandlers(group);
-        }
-
-        if (e.PropertyName == nameof(GroupItemViewModel.SelectedOutbound) ||
-            e.PropertyName == nameof(GroupItemViewModel.Name) ||
-            e.PropertyName == nameof(GroupItemViewModel.Items))
+        if (e.PropertyName == nameof(GroupsViewModel.TrayGroups))
         {
             RefreshGroupsMenu();
         }
@@ -740,25 +669,20 @@ public sealed class TrayMenuService : IDisposable
         menu.Items.Insert(targetIndex, item);
     }
 
-    private int ComputeGroupsMenuHash(GroupsViewModel groupsViewModel, bool isConnected)
+    private int ComputeGroupsMenuHash(IReadOnlyList<GroupMenuSnapshot> groups, bool isConnected)
     {
         var hash = new HashCode();
         hash.Add(isConnected);
-        hash.Add(groupsViewModel.Groups.Count);
+        hash.Add(groups.Count);
         hash.Add(_localizationService["Tray.Groups.Empty"]);
         hash.Add(_localizationService["Tray.Groups.Unavailable"]);
         hash.Add(_localizationService["Common.Unknown"]);
 
-        foreach (var group in groupsViewModel.Groups)
+        foreach (var group in groups)
         {
             hash.Add(group.Name, StringComparer.Ordinal);
             hash.Add(group.Type, StringComparer.OrdinalIgnoreCase);
-            hash.Add(group.Items?.Count ?? -1);
-
-            if (group.Items == null)
-            {
-                continue;
-            }
+            hash.Add(group.Items.Count);
 
             foreach (var outbound in group.Items)
             {
