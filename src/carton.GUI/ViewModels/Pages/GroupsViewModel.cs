@@ -1261,6 +1261,11 @@ public partial class GroupsViewModel : PageViewModelBase
         var trayGroups = new List<GroupMenuSnapshot>(_cachedGroups.Count);
         foreach (var group in _cachedGroups)
         {
+            if (group.Items.Count == 0)
+            {
+                continue;
+            }
+
             var trayItems = new List<OutboundMenuSnapshot>(group.Items.Count);
             foreach (var item in group.Items)
             {
