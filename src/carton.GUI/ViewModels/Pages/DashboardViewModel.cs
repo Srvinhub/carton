@@ -37,6 +37,7 @@ public partial class DashboardViewModel : PageViewModelBase
     private string? _currentClashMode;
     private ProfileRuntimeOptions _runtimeOptions = new();
     private bool _suppressRuntimeOptionUpdates;
+    private bool _suppressSystemProxyApply;
     private static readonly ObservableCollection<string> SupportedLogLevels = new(SingBoxLogLevelHelper.Levels);
     public override NavigationPage PageType => NavigationPage.Dashboard;
 
@@ -155,7 +156,17 @@ public partial class DashboardViewModel : PageViewModelBase
     private string _selectedLogLevel = SingBoxLogLevelHelper.DefaultLevel;
 
     partial void OnAllowLanConnectionsChanged(bool value) => UpdateRuntimeOptions(options => options.AllowLanConnections = value);
-    partial void OnEnableSystemProxyChanged(bool value) => UpdateRuntimeOptions(options => options.EnableSystemProxy = value);
+    partial void OnEnableSystemProxyChanged(bool value)
+    {
+        UpdateRuntimeOptions(options => options.EnableSystemProxy = value);
+
+        if (_suppressSystemProxyApply || !IsConnected)
+        {
+            return;
+        }
+
+        ApplyRunningSystemProxy(value);
+    }
     partial void OnEnableTunInboundChanged(bool value) => UpdateRuntimeOptions(options => options.EnableTunInbound = value);
     partial void OnSelectedLogLevelChanged(string value)
     {
@@ -208,6 +219,9 @@ public partial class DashboardViewModel : PageViewModelBase
             InitializeTrafficMetrics();
             InitializeMemoryMetrics();
             UpdateSessionStartTime();
+            _suppressSystemProxyApply = true;
+            EnableSystemProxy = _runtimeOptions.EnableSystemProxy;
+            _suppressSystemProxyApply = false;
         }
     }
 
@@ -226,6 +240,13 @@ public partial class DashboardViewModel : PageViewModelBase
             };
             OnPropertyChanged(nameof(ShowTerminalProxyButtons));
             UpdateSessionStartTime();
+
+            _suppressSystemProxyApply = true;
+            if (status == ServiceStatus.Running)
+            {
+                EnableSystemProxy = _runtimeOptions.EnableSystemProxy;
+            }
+            _suppressSystemProxyApply = false;
         });
 
         if (status == ServiceStatus.Running)
@@ -425,8 +446,7 @@ public partial class DashboardViewModel : PageViewModelBase
         var success = await _singBoxManager.StartAsync(runtimeConfigPath);
         if (success)
         {
-            // Let the manager know whether to clear the system proxy on stop.
-            _singBoxManager.NotifySystemProxyEnabled(EnableSystemProxy);
+            ApplyRunningSystemProxy(EnableSystemProxy);
         }
         StartupStatus = success ? string.Empty : _localizationService["Status.FailedStart"];
         if (!success)
@@ -611,6 +631,40 @@ public partial class DashboardViewModel : PageViewModelBase
     private void PersistRuntimePort(int port)
     {
         UpdateRuntimeOptions(options => options.InboundPort = port);
+    }
+
+    private void ApplyRunningSystemProxy(bool enabled)
+    {
+        if (_singBoxManager == null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (enabled)
+            {
+                var port = _runtimeOptions.InboundPort is >= 1 and <= 65535
+                    ? _runtimeOptions.InboundPort
+                    : 2028;
+                SystemProxyHelper.SetSystemProxy("127.0.0.1", port);
+            }
+            else
+            {
+                SystemProxyHelper.ClearSystemProxy();
+            }
+
+            _singBoxManager.NotifySystemProxyEnabled(enabled);
+        }
+        catch (Exception ex)
+        {
+            StartupStatus = $"{GetString("Dashboard.Status.SystemProxyToggleFailed", "Failed to toggle system proxy")}: {ex.Message}";
+            LogError($"Failed to toggle system proxy: {ex.Message}");
+
+            _suppressSystemProxyApply = true;
+            EnableSystemProxy = !enabled;
+            _suppressSystemProxyApply = false;
+        }
     }
 
     private static ProfileRuntimeOptions CopyRuntimeOptions(ProfileRuntimeOptions options)

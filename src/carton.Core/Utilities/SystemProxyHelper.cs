@@ -6,14 +6,12 @@ using System.Runtime.Versioning;
 namespace carton.Core.Utilities;
 
 /// <summary>
-/// Provides helpers to clear the system proxy settings.
+/// Provides helpers to set or clear the system proxy settings.
 /// Supports Windows (registry + WinINet), GNOME (gsettings), and KDE (kwriteconfig5/6).
 /// All calls are best-effort: errors are silently swallowed.
 /// </summary>
 public static class SystemProxyHelper
 {
-    // ─── Windows ──────────────────────────────────────────────────────────────
-
     private const int INTERNET_OPTION_SETTINGS_CHANGED = 39;
     private const int INTERNET_OPTION_REFRESH = 37;
 
@@ -28,13 +26,23 @@ public static class SystemProxyHelper
         IntPtr lpBuffer,
         int dwBufferLength);
 
-    // ─── Public API ───────────────────────────────────────────────────────────
+    public static void SetSystemProxy(string host, int port)
+    {
+        if (string.IsNullOrWhiteSpace(host) || port is < 1 or > 65535)
+        {
+            return;
+        }
 
-    /// <summary>
-    /// Clears the system proxy (reverts to direct/no-proxy).
-    /// Dispatches to the correct implementation based on the current OS.
-    /// Safe to call on unsupported platforms — returns immediately.
-    /// </summary>
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            SetWindowsProxy(host, port);
+        }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            SetLinuxProxy(host, port);
+        }
+    }
+
     public static void ClearSystemProxy()
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -45,17 +53,30 @@ public static class SystemProxyHelper
         {
             ClearLinuxProxy();
         }
-        // macOS: sing-box with set_system_proxy on macOS uses networksetup.
-        // Add macOS support here if needed in the future.
     }
 
-    // ─── Windows implementation ───────────────────────────────────────────────
+    [SupportedOSPlatform("windows")]
+    private static void SetWindowsProxy(string host, int port)
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(InternetSettingsKey, writable: true);
+            if (key != null)
+            {
+                key.SetValue("ProxyEnable", 1, RegistryValueKind.DWord);
+                key.SetValue("ProxyServer", $"{host}:{port}", RegistryValueKind.String);
+            }
+        }
+        catch
+        {
+        }
+
+        NotifyWindowsProxyChanged();
+    }
 
     [SupportedOSPlatform("windows")]
     private static void ClearWindowsProxy()
     {
-        // Step 1: Write ProxyEnable=0 directly to the registry.
-        // This is the same location sing-box reads/writes on Windows.
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(InternetSettingsKey, writable: true);
@@ -67,10 +88,14 @@ public static class SystemProxyHelper
         }
         catch
         {
-            // Best-effort.
         }
 
-        // Step 2: Notify WinINet so all open processes pick up the change immediately.
+        NotifyWindowsProxyChanged();
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void NotifyWindowsProxyChanged()
+    {
         try
         {
             InternetSetOptionW(IntPtr.Zero, INTERNET_OPTION_SETTINGS_CHANGED, IntPtr.Zero, 0);
@@ -78,25 +103,36 @@ public static class SystemProxyHelper
         }
         catch
         {
-            // Best-effort.
         }
     }
 
-    // ─── Linux implementation ─────────────────────────────────────────────────
+    private static void SetLinuxProxy(string host, int port)
+    {
+        TrySetGnomeProxy(host, port);
+        TrySetKdeProxy(host, port);
+    }
 
     private static void ClearLinuxProxy()
     {
-        // GNOME / any gsettings-capable DE
         TryClearGnomeProxy();
-
-        // KDE Plasma (try both kwriteconfig5 and kwriteconfig6)
         TryClearKdeProxy();
     }
 
-    /// <summary>
-    /// Clears the GNOME system proxy via <c>gsettings</c>.
-    /// Equivalent to: gsettings set org.gnome.system.proxy mode 'none'
-    /// </summary>
+    private static void TrySetGnomeProxy(string host, int port)
+    {
+        try
+        {
+            RunCommand("gsettings", "set org.gnome.system.proxy mode manual");
+            RunCommand("gsettings", $"set org.gnome.system.proxy.http host '{host}'");
+            RunCommand("gsettings", $"set org.gnome.system.proxy.http port {port}");
+            RunCommand("gsettings", $"set org.gnome.system.proxy.https host '{host}'");
+            RunCommand("gsettings", $"set org.gnome.system.proxy.https port {port}");
+        }
+        catch
+        {
+        }
+    }
+
     private static void TryClearGnomeProxy()
     {
         try
@@ -105,44 +141,50 @@ public static class SystemProxyHelper
         }
         catch
         {
-            // gsettings not available or command failed — ignore.
         }
     }
 
-    /// <summary>
-    /// Clears the KDE system proxy by setting ProxyType=0 (no proxy) via
-    /// <c>kwriteconfig5</c> or <c>kwriteconfig6</c>, then reloads KIO slaves.
-    /// </summary>
-    private static void TryClearKdeProxy()
+    private static void TrySetKdeProxy(string host, int port)
     {
-        // Try kwriteconfig6 first (KDE Plasma 6), fall back to kwriteconfig5 (Plasma 5).
-        string? tool = FindExecutable("kwriteconfig6") ?? FindExecutable("kwriteconfig5");
+        var tool = FindExecutable("kwriteconfig6") ?? FindExecutable("kwriteconfig5");
         if (tool == null)
+        {
             return;
+        }
 
         try
         {
-            // ProxyType=0 means "no proxy" in kioslaverc
-            RunCommand(tool, "--file kioslaverc --group \"Proxy Settings\" --key ProxyType 0");
-
-            // Ask KIO to pick up the new settings without needing a logout.
-            // krunner / kded / kioclient accept a dbus call, but a simple
-            // config reload is sufficient for most scenarios.
+            var proxyValue = $"http://{host} {port}";
+            RunCommand(tool, "--file kioslaverc --group \"Proxy Settings\" --key ProxyType 1");
+            RunCommand(tool, $"--file kioslaverc --group \"Proxy Settings\" --key httpProxy \"{proxyValue}\"");
+            RunCommand(tool, $"--file kioslaverc --group \"Proxy Settings\" --key httpsProxy \"{proxyValue}\"");
             RunCommandIgnoreResult("kbuildsycoca6");
             RunCommandIgnoreResult("kbuildsycoca5");
         }
         catch
         {
-            // kwriteconfig not available or command failed — ignore.
         }
     }
 
-    // ─── Helpers ──────────────────────────────────────────────────────────────
+    private static void TryClearKdeProxy()
+    {
+        var tool = FindExecutable("kwriteconfig6") ?? FindExecutable("kwriteconfig5");
+        if (tool == null)
+        {
+            return;
+        }
 
-    /// <summary>
-    /// Runs <paramref name="executable"/> with <paramref name="arguments"/>
-    /// and waits up to 3 seconds for it to finish.
-    /// </summary>
+        try
+        {
+            RunCommand(tool, "--file kioslaverc --group \"Proxy Settings\" --key ProxyType 0");
+            RunCommandIgnoreResult("kbuildsycoca6");
+            RunCommandIgnoreResult("kbuildsycoca5");
+        }
+        catch
+        {
+        }
+    }
+
     private static void RunCommand(string executable, string arguments)
     {
         using var process = new Process
@@ -157,19 +199,22 @@ public static class SystemProxyHelper
                 CreateNoWindow = true
             }
         };
+
         process.Start();
         process.WaitForExit(3000);
     }
 
     private static void RunCommandIgnoreResult(string executable)
     {
-        try { RunCommand(executable, string.Empty); } catch { }
+        try
+        {
+            RunCommand(executable, string.Empty);
+        }
+        catch
+        {
+        }
     }
 
-    /// <summary>
-    /// Returns the full path of <paramref name="name"/> if it can be found on
-    /// PATH, otherwise <see langword="null"/>.
-    /// </summary>
     private static string? FindExecutable(string name)
     {
         try
@@ -186,6 +231,7 @@ public static class SystemProxyHelper
                     CreateNoWindow = true
                 }
             };
+
             which.Start();
             var output = which.StandardOutput.ReadToEnd().Trim();
             which.WaitForExit(2000);

@@ -143,6 +143,10 @@
               <Button Content="{DynamicResource Dashboard.Button.OpenWebUi}"
                       Command="{Binding OpenWebUiCommand}"
                       Padding="12,4"/>
+              <CheckBox Content="{DynamicResource Dashboard.Option.SystemProxy}"
+                        IsChecked="{Binding EnableSystemProxy}"
+                        VerticalAlignment="Center"
+                        Margin="4,0,0,0"/>
             </StackPanel>
 
             <TextBlock Grid.Column="1"

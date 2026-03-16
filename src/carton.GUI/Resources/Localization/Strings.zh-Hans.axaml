@@ -103,6 +103,7 @@
 	<x:String x:Key="Dashboard.Button.CopyLinuxProxy">终端代理</x:String>
 	<x:String x:Key="Dashboard.Button.OpenWebUi">访问 WebUI</x:String>
 	<x:String x:Key="Dashboard.Status.OpenWebUiFailed">打开 WebUI 失败</x:String>
+  <x:String x:Key="Dashboard.Status.SystemProxyToggleFailed">切换系统代理失败</x:String>
 
 	<x:String x:Key="Status.Connected">已连接</x:String>
 	<x:String x:Key="Status.Starting">正在启动...</x:String>
