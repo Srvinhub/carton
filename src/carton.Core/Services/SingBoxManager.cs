@@ -23,7 +23,7 @@ public interface ISingBoxManager
     Task ReloadAsync();
     Task<List<OutboundGroup>> GetOutboundGroupsAsync();
     Task SelectOutboundAsync(string groupTag, string outboundTag);
-    Task RunGroupDelayTestAsync(string groupTag, string? testUrl = null, int timeoutMs = 5000);
+    Task<Dictionary<string, int>> RunGroupDelayTestAsync(string groupTag, string? testUrl = null, int timeoutMs = 5000);
     Task<Dictionary<string, int>> RunOutboundDelayTestsAsync(IEnumerable<string> outboundTags, string? testUrl = null, int timeoutMs = 5000);
     long? GetRunningProcessMemoryBytes();
     Task<List<ConnectionInfo>> GetConnectionsAsync();

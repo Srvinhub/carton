@@ -96,11 +96,13 @@ public partial class SingBoxManager
         }
     }
 
-    public async Task RunGroupDelayTestAsync(string groupTag, string? testUrl = null, int timeoutMs = 5000)
+    public async Task<Dictionary<string, int>> RunGroupDelayTestAsync(string groupTag, string? testUrl = null, int timeoutMs = 5000)
     {
+        var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
         if (string.IsNullOrWhiteSpace(groupTag))
         {
-            return;
+            return result;
         }
 
         var urlParam = Uri.EscapeDataString(string.IsNullOrWhiteSpace(testUrl) ? DefaultDelayTestUrl : testUrl);
@@ -109,11 +111,28 @@ public partial class SingBoxManager
         {
             var endpoint = $"{_apiAddress}/group/{Uri.EscapeDataString(groupTag)}/delay?timeout={timeoutMs}&url={urlParam}";
             using var response = await _httpClient.GetAsync(endpoint);
-            _ = response.IsSuccessStatusCode;
+            if (!response.IsSuccessStatusCode)
+            {
+                return result;
+            }
+
+            var payload = await response.Content.ReadAsStringAsync();
+            using var document = JsonDocument.Parse(payload);
+
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (property.Value.ValueKind == JsonValueKind.Number &&
+                    property.Value.TryGetInt32(out var delay))
+                {
+                    result[property.Name] = delay;
+                }
+            }
         }
         catch
         {
         }
+
+        return result;
     }
 
     public async Task<Dictionary<string, int>> RunOutboundDelayTestsAsync(IEnumerable<string> outboundTags, string? testUrl = null, int timeoutMs = 5000)

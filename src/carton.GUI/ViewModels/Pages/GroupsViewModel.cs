@@ -931,16 +931,19 @@ public partial class GroupsViewModel : PageViewModelBase
 
         try
         {
-            await _singBoxManager.RunGroupDelayTestAsync(group.Name);
+            var delays = await _singBoxManager.RunGroupDelayTestAsync(group.Name);
 
-            var testTasks = new Task[targets.Count];
-            for (var i = 0; i < targets.Count; i++)
+            await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                var item = targets[i];
-                testTasks[i] = RefreshUrlTestTargetDelayAsync(item);
-            }
+                foreach (var item in targets)
+                {
+                    var delay = delays.TryGetValue(item.Tag, out var value) && value > 0 ? value : 0;
+                    UpdateCachedRawDelay(item.Tag, delay);
+                }
 
-            await Task.WhenAll(testTasks);
+                RecalculateEffectiveDelays();
+            });
+
             await RefreshGroupSelectionAsync(group.Name);
 
             if (updateTestingState)
@@ -1394,23 +1397,6 @@ public partial class GroupsViewModel : PageViewModelBase
                     ? $"{group.Name}: {item.Tag} {delay}ms ({completedCounter[0]}/{totalCount})"
                     : $"{group.Name}: {item.Tag} timeout ({completedCounter[0]}/{totalCount})";
             }
-        });
-    }
-
-    private async Task RefreshUrlTestTargetDelayAsync(OutboundItemViewModel item)
-    {
-        if (_singBoxManager == null)
-        {
-            return;
-        }
-
-        var delays = await _singBoxManager.RunOutboundDelayTestsAsync(new[] { item.Tag });
-        var delay = delays.TryGetValue(item.Tag, out var value) && value >= 0 ? value : 0;
-
-        await Dispatcher.UIThread.InvokeAsync(() =>
-        {
-            UpdateCachedRawDelay(item.Tag, delay);
-            RecalculateEffectiveDelays();
         });
     }
 
