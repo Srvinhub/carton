@@ -88,7 +88,6 @@
   <x:String x:Key="Dashboard.Port.Save">Save Port</x:String>
   <x:String x:Key="Dashboard.LogLevel.HighVolumeHint">Current log volume is high. Warn or above is recommended.</x:String>
 	<x:String x:Key="Dashboard.StartupPrompt">Select a profile before starting</x:String>
-	<x:String x:Key="Dashboard.Button.Start">Start</x:String>
   <x:String x:Key="Dashboard.ClashMode">Clash Outbound Mode</x:String>
 	<x:String x:Key="Dashboard.TrafficStats">Traffic Statistics</x:String>
 	<x:String x:Key="Dashboard.Label.UploadSpeed">Upload Speed</x:String>
@@ -96,7 +95,6 @@
 	<x:String x:Key="Dashboard.Label.TotalUpload">Total Upload</x:String>
 	<x:String x:Key="Dashboard.Label.TotalDownload">Total Download</x:String>
 	<x:String x:Key="Dashboard.StatusLabel">Status</x:String>
-	<x:String x:Key="Dashboard.Button.Stop">Stop</x:String>
 	<x:String x:Key="Dashboard.CurrentProfileLabel">Current Profile</x:String>
 	<x:String x:Key="Dashboard.Status.CommandCopied">Command copied to clipboard</x:String>
 	<x:String x:Key="Dashboard.Button.CopyCmdProxy">CMD Proxy</x:String>

@@ -38,6 +38,7 @@ public partial class DashboardViewModel : PageViewModelBase
     private ProfileRuntimeOptions _runtimeOptions = new();
     private bool _suppressRuntimeOptionUpdates;
     private bool _suppressSystemProxyApply;
+    private readonly DispatcherTimer _sessionDurationTimer;
     private static readonly ObservableCollection<string> SupportedLogLevels = new(SingBoxLogLevelHelper.Levels);
     public override NavigationPage PageType => NavigationPage.Dashboard;
 
@@ -193,6 +194,11 @@ public partial class DashboardViewModel : PageViewModelBase
         Icon = "Home";
         _localizationService = LocalizationService.Instance;
         _clashConfigCache = ClashConfigCacheService.Instance;
+        _sessionDurationTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(1)
+        };
+        _sessionDurationTimer.Tick += (_, _) => UpdateSessionStartTime();
         _localizationService.LanguageChanged += (_, _) =>
         {
             UpdateSessionStartTime();
@@ -218,6 +224,7 @@ public partial class DashboardViewModel : PageViewModelBase
             _ = RefreshClashModeAsync();
             InitializeTrafficMetrics();
             InitializeMemoryMetrics();
+            StartSessionDurationTimer();
             UpdateSessionStartTime();
             _suppressSystemProxyApply = true;
             EnableSystemProxy = _runtimeOptions.EnableSystemProxy;
@@ -251,6 +258,7 @@ public partial class DashboardViewModel : PageViewModelBase
 
         if (status == ServiceStatus.Running)
         {
+            StartSessionDurationTimer();
             _ = RefreshClashModeAsync();
             Dispatcher.UIThread.Post(() =>
             {
@@ -260,6 +268,7 @@ public partial class DashboardViewModel : PageViewModelBase
         }
         else
         {
+            StopSessionDurationTimer();
             Dispatcher.UIThread.Post(() =>
             {
                 _clashConfigCache.Clear();
@@ -867,7 +876,36 @@ public partial class DashboardViewModel : PageViewModelBase
     private void UpdateSessionStartTime()
     {
         var startTime = _singBoxManager?.State.StartTime;
-        SessionStartTimeText = startTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "--";
+        if (!startTime.HasValue)
+        {
+            SessionStartTimeText = "--";
+            return;
+        }
+
+        var elapsed = DateTime.Now - startTime.Value;
+        if (elapsed < TimeSpan.Zero)
+        {
+            elapsed = TimeSpan.Zero;
+        }
+
+        var totalHours = (int)elapsed.TotalHours;
+        SessionStartTimeText = $"{totalHours:00}:{elapsed.Minutes:00}:{elapsed.Seconds:00}";
+    }
+
+    private void StartSessionDurationTimer()
+    {
+        if (!_sessionDurationTimer.IsEnabled)
+        {
+            _sessionDurationTimer.Start();
+        }
+    }
+
+    private void StopSessionDurationTimer()
+    {
+        if (_sessionDurationTimer.IsEnabled)
+        {
+            _sessionDurationTimer.Stop();
+        }
     }
 
     private async Task<ClashConfigSnapshot?> GetClashConfigFromApiAsync()

@@ -87,7 +87,6 @@
 	<x:String x:Key="Dashboard.Port.Save">保存端口</x:String>
   <x:String x:Key="Dashboard.LogLevel.HighVolumeHint">当前日志较多，推荐 warn 及以上</x:String>
 	<x:String x:Key="Dashboard.StartupPrompt">启动前请选择一个配置</x:String>
-	<x:String x:Key="Dashboard.Button.Start">启动</x:String>
 	<x:String x:Key="Dashboard.ClashMode">Clash 出站模式</x:String>
 	<x:String x:Key="Dashboard.TrafficStats">流量统计</x:String>
 	<x:String x:Key="Dashboard.Label.UploadSpeed">上传速度</x:String>
@@ -95,7 +94,6 @@
 	<x:String x:Key="Dashboard.Label.TotalUpload">累计上传</x:String>
 	<x:String x:Key="Dashboard.Label.TotalDownload">累计下载</x:String>
 	<x:String x:Key="Dashboard.StatusLabel">状态</x:String>
-	<x:String x:Key="Dashboard.Button.Stop">停止</x:String>
 	<x:String x:Key="Dashboard.CurrentProfileLabel">当前配置</x:String>
 	<x:String x:Key="Dashboard.Status.CommandCopied">命令已复制到剪贴板</x:String>
 	<x:String x:Key="Dashboard.Button.CopyCmdProxy">CMD 代理</x:String>

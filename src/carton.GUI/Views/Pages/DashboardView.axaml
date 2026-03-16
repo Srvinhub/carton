@@ -1,4 +1,4 @@
-﻿<UserControl xmlns="https://github.com/avaloniaui"
+<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -23,7 +23,7 @@
                            Text="{DynamicResource Dashboard.Field.Port}"
                            VerticalAlignment="Center"/>
                 <TextBox Grid.Column="1"
-                          Text="{Binding InboundPortText}"
+                         Text="{Binding InboundPortText}"
                          LostFocus="InboundPortTextBox_OnLostFocus"
                          VerticalAlignment="Center"/>
                 <TextBlock Grid.Column="2"
@@ -62,9 +62,14 @@
                          VerticalAlignment="Center"
                          Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
               <Button Grid.Column="1"
-                      Content="{DynamicResource Dashboard.Button.Start}"
                       Command="{Binding StartWithSelectedProfileCommand}"
-                      Classes="accent"/>
+                      Classes="accent"
+                      Padding="12,8"
+                      MinWidth="44">
+                <PathIcon Width="14"
+                          Height="14"
+                          Data="M 0 0 L 12 6 L 0 12 Z"/>
+              </Button>
             </Grid>
 
             <ItemsControl ItemsSource="{Binding AvailableProfiles}">
@@ -119,12 +124,35 @@
                          FontSize="14"
                          FontWeight="SemiBold"
                          VerticalAlignment="Center"/>
+              <Button Command="{Binding StopConnectionCommand}"
+                      Classes="danger"
+                      Padding="10,4"
+                      CornerRadius="17">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Border Width="18"
+                          Height="18"
+                          CornerRadius="9"
+                          BorderThickness="1.5"
+                          BorderBrush="#F8FFFFFF"
+                          VerticalAlignment="Center">
+                    <Border Width="7"
+                            Height="7"
+                            CornerRadius="1.5"
+                            Background="#F8FFFFFF"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"/>
+                  </Border>
+                  <TextBlock Text="{Binding SessionStartTimeText}"
+                             FontWeight="SemiBold"
+                             VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
             </StackPanel>
           </Grid>
         </Border>
 
         <Border Classes="card" Padding="14,10">
-          <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
             <StackPanel Grid.Column="0"
                         Orientation="Horizontal"
                         Spacing="8">
@@ -153,22 +181,9 @@
                        Text="{Binding StartupStatus}"
                        IsVisible="{Binding StartupStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                        FontSize="11"
+                       HorizontalAlignment="Right"
                        VerticalAlignment="Center"
                        Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-
-            <TextBlock Grid.Column="2"
-                       Text="{Binding SessionStartTimeText, StringFormat='启动时间 {0}'}"
-                       FontSize="12"
-                       VerticalAlignment="Center"
-                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
-                       HorizontalAlignment="Right"/>
-
-            <Button Grid.Column="3"
-                    Content="{DynamicResource Dashboard.Button.Stop}"
-                    Command="{Binding StopConnectionCommand}"
-                    Padding="12,4"
-                    Classes="danger"
-                    HorizontalAlignment="Right"/>
           </Grid>
         </Border>
 
@@ -262,7 +277,6 @@
                            FontSize="18"
                            FontWeight="SemiBold"/>
               </StackPanel>
-
             </StackPanel>
           </Border>
         </Grid>
