@@ -16,7 +16,7 @@
             Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
             Padding="16">
       <StackPanel Orientation="Horizontal" Spacing="12">
-        <TextBlock Text="代理组"
+        <TextBlock Text="{DynamicResource Navigation.Groups}"
                    FontSize="24"
                    FontWeight="SemiBold"/>
         <ProgressBar Width="80"
@@ -37,80 +37,62 @@
                  VerticalAlignment="Center"/>
     </Border>
 
-    <Grid Grid.Row="2"
-          Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
-          RowDefinitions="Auto,*"
-          RowSpacing="12">
-      <ListBox x:Name="GroupTabsListBox"
-               Grid.Row="0"
-                Margin="16,8,16,0"
-                ItemsSource="{Binding Groups}"
-                SelectedItem="{Binding SelectedGroup}"
-                BorderThickness="0"
-                Background="Transparent"
-                Padding="0,0,0,12"
-                IsVisible="{Binding ShowGroupTabs}"
-                ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                ScrollViewer.VerticalScrollBarVisibility="Disabled">
-        <ListBox.ItemsPanel>
-          <ItemsPanelTemplate>
-            <StackPanel Orientation="Horizontal" Spacing="8"/>
-          </ItemsPanelTemplate>
-        </ListBox.ItemsPanel>
-        <ListBox.ItemTemplate>
+    <ScrollViewer Grid.Row="2"
+                  Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}">
+      <ItemsControl Margin="16,8,16,12"
+                    ItemsSource="{Binding Groups}">
+        <ItemsControl.ItemTemplate>
           <DataTemplate DataType="vm:GroupItemViewModel">
-            <Border Padding="12,8"
-                    CornerRadius="6"
-                    Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
-                    BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
-                    BorderThickness="1">
-              <StackPanel>
-                <TextBlock helpers:EmojiTextHelper.Text="{Binding Name}"
-                           FontWeight="SemiBold"/>
-                <TextBlock helpers:EmojiTextHelper.Prefix="{DynamicResource Groups.Label.Current}"
-                           helpers:EmojiTextHelper.Text="{Binding SelectedOutbound}"
-                           FontSize="11"
-                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-              </StackPanel>
-            </Border>
-          </DataTemplate>
-        </ListBox.ItemTemplate>
-        <ListBox.Styles>
-          <Style Selector="ListBoxItem">
-            <Setter Property="Margin" Value="0,0,4,0"/>
-            <Setter Property="Padding" Value="0"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-          </Style>
-          <Style Selector="ListBoxItem:selected Border">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltMediumHighBrush}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColor}"/>
-          </Style>
-        </ListBox.Styles>
-      </ListBox>
+            <Border Margin="0,0,0,8"
+                    Padding="14,12"
+                    CornerRadius="12"
+                    BorderThickness="1"
+                    VerticalAlignment="Top"
+                    Classes.expanded="{Binding IsExpanded}">
+              <Border.Styles>
+                <Style Selector="Border">
+                  <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltHighBrush}"/>
+                  <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
+                </Style>
+                <Style Selector="Border.expanded">
+                  <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeHighBrush}"/>
+                  <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColor}"/>
+                </Style>
+              </Border.Styles>
 
-      <Border Grid.Row="1"
-              Margin="16"
-              Padding="16"
-              CornerRadius="12"
-              Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
-              BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
-              BorderThickness="1">
-        <ContentControl Content="{Binding SelectedGroup}">
-          <ContentControl.ContentTemplate>
-            <DataTemplate DataType="vm:GroupItemViewModel">
-              <Grid RowDefinitions="Auto,*" RowSpacing="12">
-                <Grid ColumnDefinitions="*,Auto"
-                      ColumnSpacing="12">
+              <Grid RowDefinitions="Auto,Auto"
+                    VerticalAlignment="Top"
+                    RowSpacing="8">
+                <Grid ColumnDefinitions="*,Auto,Auto"
+                      ColumnSpacing="8">
                   <StackPanel Grid.Column="0"
-                              Orientation="Horizontal"
-                              Spacing="8">
-                    <TextBlock helpers:EmojiTextHelper.Text="{Binding Name}"
-                               FontSize="18"
-                               FontWeight="SemiBold"/>
-                    <TextBlock Text="{Binding Type}"
-                               FontSize="12"
-                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                              Spacing="6">
+                    <WrapPanel Orientation="Horizontal"
+                               VerticalAlignment="Center"
+                               ItemSpacing="6"
+                               LineSpacing="6">
+                      <TextBlock helpers:EmojiTextHelper.Text="{Binding Name}"
+                                 FontSize="16"
+                                 FontWeight="SemiBold"
+                                 VerticalAlignment="Center"/>
+                      <Border Padding="7,1"
+                              CornerRadius="999"
+                              Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}">
+                        <TextBlock Text="{Binding Type}"
+                                   FontSize="11"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                      </Border>
+                      <Border Padding="7,1"
+                              CornerRadius="999"
+                              Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}">
+                        <TextBlock Text="{Binding Items.Count}"
+                                   FontSize="11"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                      </Border>
+                    </WrapPanel>
+
                     <TextBlock helpers:EmojiTextHelper.Prefix="{DynamicResource Groups.Label.Current}"
                                helpers:EmojiTextHelper.Text="{Binding SelectedOutbound}"
                                FontSize="12"
@@ -118,100 +100,185 @@
                   </StackPanel>
 
                   <Button Grid.Column="1"
-                          Content="⚡"
-                          Command="{Binding DataContext.TestCurrentGroupCommand, ElementName=GroupsViewRoot}"
-                          Padding="8,4"
+                          VerticalAlignment="Top"
+                          Content="&#x26A1;"
+                          Command="{Binding DataContext.TestGroupCardCommand, ElementName=GroupsViewRoot}"
+                          CommandParameter="{Binding}"
+                          Padding="6,3"
                           MinWidth="0"/>
+
+                  <Grid Grid.Column="2">
+                    <Button VerticalAlignment="Top"
+                            IsVisible="{Binding IsCollapsed}"
+                            Command="{Binding DataContext.ToggleGroupExpansionCommand, ElementName=GroupsViewRoot}"
+                            CommandParameter="{Binding}"
+                            Width="32"
+                            Height="28"
+                            Padding="0"
+                            MinWidth="32"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center">
+                      <Grid Width="16"
+                            Height="16"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                        <Path Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                              StrokeThickness="1.6"
+                              Data="M 2 3.5 L 14 3.5"/>
+                        <Path Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                              StrokeThickness="1.6"
+                              Data="M 4 8.5 L 8 4.5 L 12 8.5 M 8 4.5 L 8 13"/>
+                      </Grid>
+                    </Button>
+                    <Button VerticalAlignment="Top"
+                            IsVisible="{Binding IsExpanded}"
+                            Command="{Binding DataContext.ToggleGroupExpansionCommand, ElementName=GroupsViewRoot}"
+                            CommandParameter="{Binding}"
+                            Width="32"
+                            Height="28"
+                            Padding="0"
+                            MinWidth="32"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center">
+                      <Grid Width="16"
+                            Height="16"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                        <Path Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                              StrokeThickness="1.6"
+                              Data="M 2 12.5 L 14 12.5"/>
+                        <Path Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                              StrokeThickness="1.6"
+                              Data="M 4 7.5 L 8 11.5 L 12 7.5 M 8 3 L 8 11.5"/>
+                      </Grid>
+                    </Button>
+                  </Grid>
                 </Grid>
 
-                <ScrollViewer x:Name="ProxiesScrollViewer"
-                              Grid.Row="1"
-                              Padding="0">
-                  <ItemsControl ItemsSource="{Binding Items}">
+                <StackPanel Grid.Row="1"
+                            IsVisible="{Binding IsCollapsed}"
+                            Spacing="6">
+                  <ItemsControl ItemsSource="{Binding CollapsedPreviewItems}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal"
+                                   ItemSpacing="5"
+                                   LineSpacing="5"/>
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                       <DataTemplate DataType="vm:OutboundItemViewModel">
-                        <Border Margin="4,0,4,8"
-                                Padding="0"
-                                CornerRadius="10"
-                                BorderThickness="1"
-                                HorizontalAlignment="Stretch"
-                                Classes.selected="{Binding IsSelected}"
-                                Classes.hovered="{Binding IsHovered}"
-                                ToolTip.Tip="{Binding Tag}"
-                                PointerEntered="OnProxyPointerEntered"
-                                PointerExited="OnProxyPointerExited">
+                        <Grid Width="12"
+                              Height="12"
+                              ToolTip.Tip="{Binding Tag}">
+                          <Border CornerRadius="2"
+                                  Background="{Binding Delay, Converter={StaticResource LatencyForegroundConverter}}"/>
+                          <Border Width="5"
+                                  Height="5"
+                                  Background="White"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  IsVisible="{Binding IsSelected}"/>
+                        </Grid>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+
+                <ItemsControl x:Name="ExpandedProxiesList"
+                              Grid.Row="1"
+                              Margin="0,0,0,-4"
+                              VerticalAlignment="Top"
+                              IsVisible="{Binding IsExpanded}"
+                              ItemsSource="{Binding Items}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:OutboundItemViewModel">
+                      <Border Margin="4,0,4,4"
+                              Padding="0"
+                              CornerRadius="10"
+                              BorderThickness="1"
+                              HorizontalAlignment="Stretch"
+                              Classes.selected="{Binding IsSelected}"
+                              Classes.hovered="{Binding IsHovered}"
+                              ToolTip.Tip="{Binding Tag}"
+                              PointerEntered="OnProxyPointerEntered"
+                              PointerExited="OnProxyPointerExited">
                           <Border.Styles>
                             <Style Selector="Border">
-                              <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltHighBrush}"/>
+                              <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltMediumHighBrush}"/>
                               <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
+                              <Setter Property="BorderThickness" Value="1"/>
                             </Style>
                             <Style Selector="Border.hovered">
                               <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeHighBrush}"/>
                             </Style>
                             <Style Selector="Border.selected">
-                              <Setter Property="Background" Value="{DynamicResource SystemAccentColor}"/>
                               <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColor}"/>
+                              <Setter Property="BorderThickness" Value="4"/>
                             </Style>
                           </Border.Styles>
 
-                          <Grid>
-                            <Border Grid.RowSpan="2"
+                          <Grid ColumnDefinitions="*,Auto"
+                                ColumnSpacing="12">
+                            <Border Grid.ColumnSpan="2"
+                                    Background="{DynamicResource SystemAccentColor}"
+                                    CornerRadius="9"
+                                    Opacity="0.16"
+                                    IsHitTestVisible="False"
+                                    IsVisible="{Binding IsSelected}"/>
+
+                            <Border Grid.ColumnSpan="2"
                                     Background="Transparent"
                                     CornerRadius="10"
                                     PointerPressed="OnProxySelectPressed"/>
 
-                            <Grid Margin="12"
-                                  RowDefinitions="Auto,Auto"
-                                  RowSpacing="8"
-                                  IsHitTestVisible="False">
+                            <StackPanel Margin="14,12"
+                                        Spacing="6"
+                                        IsHitTestVisible="False">
                               <TextBlock helpers:EmojiTextHelper.Text="{Binding Tag}"
                                          FontSize="14"
                                          FontWeight="SemiBold"
                                          MaxLines="1"
                                          TextTrimming="CharacterEllipsis"/>
-
-                              <TextBlock Grid.Row="1"
-                                         Text="{Binding Type}"
-                                         VerticalAlignment="Center"
+                              <TextBlock Text="{Binding Type}"
                                          FontSize="12"
                                          Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-                            </Grid>
+                            </StackPanel>
 
-                            <StackPanel Orientation="Horizontal"
+                            <StackPanel Grid.Column="1"
+                                        Margin="0,12,12,12"
                                         Spacing="8"
-                                        Margin="12,0,12,10"
                                         HorizontalAlignment="Right"
-                                        VerticalAlignment="Bottom"
-                                        Panel.ZIndex="1">
+                                        VerticalAlignment="Center">
                               <TextBlock Text="{Binding DelayDisplay}"
-                                         VerticalAlignment="Center"
+                                         HorizontalAlignment="Right"
                                          FontSize="12"
                                          FontWeight="SemiBold"
                                          Foreground="{Binding Delay, Converter={StaticResource LatencyForegroundConverter}}"
                                          IsHitTestVisible="False"/>
-                              <Button Content="⚡"
+                              <Button Content="&#x26A1;"
                                       Command="{Binding TestDelayCommand}"
+                                      HorizontalAlignment="Right"
                                       Padding="8,2"
                                       MinWidth="0"/>
                             </StackPanel>
                           </Grid>
-                        </Border>
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                    <ItemsControl.ItemsPanel>
-                      <ItemsPanelTemplate>
-                        <WrapPanel Orientation="Horizontal"
-                                   ItemWidth="{Binding ElementName=ProxiesScrollViewer, Path=Bounds.Width, Converter={StaticResource ResponsiveItemWidthConverter}}"/>
-                      </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                  </ItemsControl>
-                </ScrollViewer>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel Orientation="Horizontal"
+                                 ItemWidth="{Binding ElementName=ExpandedProxiesList, Path=Bounds.Width, Converter={StaticResource ResponsiveItemWidthConverter}}"/>
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                </ItemsControl>
               </Grid>
-            </DataTemplate>
-          </ContentControl.ContentTemplate>
-        </ContentControl>
-      </Border>
-    </Grid>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
   </Grid>
 
 </UserControl>

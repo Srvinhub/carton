@@ -8,7 +8,6 @@ using CommunityToolkit.Mvvm.Input;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Collections.Specialized;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -21,6 +20,7 @@ public partial class GroupsViewModel : PageViewModelBase
     private readonly SemaphoreSlim _loadSemaphore = new(1, 1);
     private readonly ClashConfigCacheService _clashConfigCache;
     private readonly Dictionary<string, List<OutboundItemViewModel>> _outboundItemsByTag = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, bool> _groupExpandStates = new(StringComparer.OrdinalIgnoreCase);
     private readonly DispatcherTimer _urlTestRefreshTimer;
     private bool _isRefreshingUrlTestGroups;
     private bool _isPageActive;
@@ -43,9 +43,6 @@ public partial class GroupsViewModel : PageViewModelBase
     [ObservableProperty]
     private bool _isTestingGroup;
 
-    [ObservableProperty]
-    private bool _showGroupTabs;
-
     public GroupsViewModel()
     {
         Title = "Groups";
@@ -56,8 +53,6 @@ public partial class GroupsViewModel : PageViewModelBase
             Interval = TimeSpan.FromSeconds(2.5f)
         };
         _urlTestRefreshTimer.Tick += OnUrlTestRefreshTimerTick;
-        Groups.CollectionChanged += OnGroupsCollectionChanged;
-        UpdateGroupTabsVisibility();
     }
 
     public GroupsViewModel(ISingBoxManager singBoxManager) : this()
@@ -139,7 +134,6 @@ public partial class GroupsViewModel : PageViewModelBase
                     Groups.Clear();
                     SelectedGroup = null;
                     StatusMessage = LocalizationService.Instance[WaitingForSingBoxResourceKey];
-                    UpdateGroupTabsVisibility();
                 });
                 return;
             }
@@ -191,7 +185,8 @@ public partial class GroupsViewModel : PageViewModelBase
                         Name = group.Tag,
                         Type = group.Type,
                         SelectedOutbound = group.Selected,
-                        Items = new ObservableCollection<OutboundItemViewModel>(outboundItems)
+                        Items = new ObservableCollection<OutboundItemViewModel>(outboundItems),
+                        IsExpanded = _groupExpandStates.TryGetValue(group.Tag, out var isExpanded) && isExpanded
                     };
 
                     groupVm.SelectOutboundCommand = new AsyncRelayCommand<string>(
@@ -236,6 +231,7 @@ public partial class GroupsViewModel : PageViewModelBase
             Dispatcher.UIThread.Post(UpdateSelectOutboundCommandStates);
             Dispatcher.UIThread.Post(UpdateTestDelayCommandStates);
             Dispatcher.UIThread.Post(() => TestCurrentGroupCommand.NotifyCanExecuteChanged());
+            Dispatcher.UIThread.Post(() => TestGroupCardCommand.NotifyCanExecuteChanged());
             UpdateUrlTestRefreshState();
             _ = RefreshUrlTestGroupsAsync();
         }
@@ -258,6 +254,7 @@ public partial class GroupsViewModel : PageViewModelBase
         Dispatcher.UIThread.Post(UpdateSelectOutboundCommandStates);
         Dispatcher.UIThread.Post(UpdateTestDelayCommandStates);
         Dispatcher.UIThread.Post(() => TestCurrentGroupCommand.NotifyCanExecuteChanged());
+        Dispatcher.UIThread.Post(() => TestGroupCardCommand.NotifyCanExecuteChanged());
 
         if (status == ServiceStatus.Running)
         {
@@ -273,23 +270,12 @@ public partial class GroupsViewModel : PageViewModelBase
                 _outboundItemsByTag.Clear();
                 Groups.Clear();
                 SelectedGroup = null;
-                UpdateGroupTabsVisibility();
                 StatusMessage = status == ServiceStatus.Error
                     ? "sing-box failed to start"
                     : "sing-box is not running";
             });
             UpdateUrlTestRefreshState();
         }
-    }
-
-    private void OnGroupsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        UpdateGroupTabsVisibility();
-    }
-
-    private void UpdateGroupTabsVisibility()
-    {
-        ShowGroupTabs = Groups.Count > 1;
     }
 
     private void UpdateSelectOutboundCommandStates()
@@ -395,6 +381,7 @@ public partial class GroupsViewModel : PageViewModelBase
             {
                 if (group != null)
                 {
+                    SelectedGroup = group;
                     group.SelectedOutbound = outboundTag;
                 }
 
@@ -571,16 +558,36 @@ public partial class GroupsViewModel : PageViewModelBase
     partial void OnSelectedGroupChanged(GroupItemViewModel? value)
     {
         TestCurrentGroupCommand.NotifyCanExecuteChanged();
+        TestGroupCardCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnIsTestingGroupChanged(bool value)
     {
         TestCurrentGroupCommand.NotifyCanExecuteChanged();
+        TestGroupCardCommand.NotifyCanExecuteChanged();
     }
 
     private bool CanTestCurrentGroup()
     {
         return _singBoxManager?.IsRunning == true && SelectedGroup != null && !IsTestingGroup;
+    }
+
+    private bool CanTestGroupCard(GroupItemViewModel? group)
+    {
+        return _singBoxManager?.IsRunning == true && group != null && !IsTestingGroup;
+    }
+
+    [RelayCommand]
+    private void ToggleGroupExpansion(GroupItemViewModel? group)
+    {
+        if (group == null)
+        {
+            return;
+        }
+
+        SelectedGroup = group;
+        group.IsExpanded = !group.IsExpanded;
+        _groupExpandStates[group.Name] = group.IsExpanded;
     }
 
     private void RegisterOutboundItem(OutboundItemViewModel item)
@@ -842,6 +849,18 @@ public partial class GroupsViewModel : PageViewModelBase
         await TestGroupAsync(SelectedGroup, updateTestingState: true, onlyTestMissingDelay: false);
     }
 
+    [RelayCommand(CanExecute = nameof(CanTestGroupCard))]
+    private async Task TestGroupCardAsync(GroupItemViewModel? group)
+    {
+        if (group == null)
+        {
+            return;
+        }
+
+        SelectedGroup = group;
+        await TestGroupAsync(group, updateTestingState: true, onlyTestMissingDelay: false);
+    }
+
     private GroupItemViewModel? FindGroupByName(string groupName)
     {
         for (var i = 0; i < Groups.Count; i++)
@@ -1035,6 +1054,8 @@ public partial class GroupsViewModel : PageViewModelBase
 
 public partial class GroupItemViewModel : ObservableObject
 {
+    private const int CollapsedPreviewItemLimit = 24;
+
     [ObservableProperty]
     private string _name = string.Empty;
 
@@ -1047,7 +1068,31 @@ public partial class GroupItemViewModel : ObservableObject
     [ObservableProperty]
     private ObservableCollection<OutboundItemViewModel> _items = new();
 
+    [ObservableProperty]
+    private bool _isExpanded;
+
     public IAsyncRelayCommand<string>? SelectOutboundCommand { get; set; }
+
+    public IReadOnlyList<OutboundItemViewModel> CollapsedPreviewItems
+    {
+        get
+        {
+            if (Items.Count <= CollapsedPreviewItemLimit)
+            {
+                return Items;
+            }
+
+            var previewItems = new List<OutboundItemViewModel>(CollapsedPreviewItemLimit);
+            for (var i = 0; i < CollapsedPreviewItemLimit; i++)
+            {
+                previewItems.Add(Items[i]);
+            }
+
+            return previewItems;
+        }
+    }
+
+    public bool IsCollapsed => !IsExpanded;
 
     partial void OnSelectedOutboundChanged(string value)
     {
@@ -1057,6 +1102,12 @@ public partial class GroupItemViewModel : ObservableObject
     partial void OnItemsChanged(ObservableCollection<OutboundItemViewModel> value)
     {
         UpdateItemSelection();
+        OnPropertyChanged(nameof(CollapsedPreviewItems));
+    }
+
+    partial void OnIsExpandedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsCollapsed));
     }
 
     public void UpdateItemSelection()
