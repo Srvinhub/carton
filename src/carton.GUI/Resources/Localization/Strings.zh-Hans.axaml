@@ -113,10 +113,12 @@
 	<x:String x:Key="Status.RemoteConfigUnavailable">远程配置不可用</x:String>
 	<x:String x:Key="Status.RemoteProfileUrlEmpty">远程配置 URL 为空</x:String>
 	<x:String x:Key="Status.RemoteConfigDownloading">远程配置缺失，正在下载...</x:String>
-	<x:String x:Key="Status.RemoteConfigEmpty">下载到的远程配置为空</x:String>
-	<x:String x:Key="Status.RemoteConfigFileMissing">远程配置下载成功但本地文件不存在</x:String>
+	<x:String x:Key="Status.RemoteConfigRefreshing">远程配置已到更新间隔，正在刷新...</x:String>
+	<x:String x:Key="Status.RemoteConfigEmpty">远程配置内容为空</x:String>
+	<x:String x:Key="Status.RemoteConfigFileMissing">已获取远程配置，但本地文件不存在</x:String>
 	<x:String x:Key="Status.RemoteConfigDownloaded">远程配置下载完成</x:String>
-	<x:String x:Key="Status.RemoteConfigDownloadFailed">下载远程配置失败</x:String>
+	<x:String x:Key="Status.RemoteConfigRefreshed">远程配置刷新完成</x:String>
+	<x:String x:Key="Status.RemoteConfigDownloadFailed">获取远程配置失败</x:String>
 	<x:String x:Key="Status.KernelDownloading">开始下载...</x:String>
 	<x:String x:Key="Dashboard.Startup.ServiceUnavailable">服务不可用</x:String>
 	<x:String x:Key="Dashboard.Startup.NoProfileAvailable">没有可用配置</x:String>

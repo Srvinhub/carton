@@ -569,7 +569,8 @@ public partial class MainViewModel : ViewModelBase
     private async Task<string?> EnsureProfileConfigPathForStartAsync(Profile profile)
     {
         var configPath = await _configManager.GetConfigPathAsync(profile.Id, profile.Type);
-        if (!string.IsNullOrWhiteSpace(configPath) && File.Exists(configPath))
+        var hasLocalConfig = !string.IsNullOrWhiteSpace(configPath) && File.Exists(configPath);
+        if (hasLocalConfig && !ShouldRefreshRemoteProfileOnStart(profile))
         {
             return configPath;
         }
@@ -587,9 +588,11 @@ public partial class MainViewModel : ViewModelBase
             return null;
         }
 
-        var downloadingMessage = GetString("Status.RemoteConfigDownloading", "Remote config missing, downloading...");
-        ConnectionStatus = downloadingMessage;
-        _logStore.AddLog($"[INFO] {downloadingMessage}: {profile.Name} ({profile.Id})");
+        var loadingMessage = hasLocalConfig
+            ? GetString("Status.RemoteConfigRefreshing", "Remote config due for update, refreshing...")
+            : GetString("Status.RemoteConfigDownloading", "Remote config missing, downloading...");
+        ConnectionStatus = loadingMessage;
+        _logStore.AddLog($"[INFO] {loadingMessage}: {profile.Name} ({profile.Id})");
         try
         {
             var client = HttpClientFactory.External;
@@ -603,6 +606,8 @@ public partial class MainViewModel : ViewModelBase
             }
 
             await _configManager.SaveConfigAsync(profile.Id, content, ProfileType.Remote);
+            profile.LastUpdated = DateTime.Now;
+            await _profileManager.UpdateAsync(profile);
             var downloadedPath = await _configManager.GetConfigPathAsync(profile.Id, ProfileType.Remote);
             if (string.IsNullOrWhiteSpace(downloadedPath) || !File.Exists(downloadedPath))
             {
@@ -612,9 +617,11 @@ public partial class MainViewModel : ViewModelBase
                 return null;
             }
 
-            var downloadedMessage = GetString("Status.RemoteConfigDownloaded", "Remote config downloaded");
-            _logStore.AddLog($"[INFO] {downloadedMessage}: {profile.Name} ({profile.Id})");
-            ConnectionStatus = downloadedMessage;
+            var completedMessage = hasLocalConfig
+                ? GetString("Status.RemoteConfigRefreshed", "Remote config refreshed")
+                : GetString("Status.RemoteConfigDownloaded", "Remote config downloaded");
+            _logStore.AddLog($"[INFO] {completedMessage}: {profile.Name} ({profile.Id})");
+            ConnectionStatus = completedMessage;
             return downloadedPath;
         }
         catch (Exception ex)
@@ -624,6 +631,21 @@ public partial class MainViewModel : ViewModelBase
             ConnectionStatus = $"{message}: {ex.Message}";
             return null;
         }
+    }
+
+    private static bool ShouldRefreshRemoteProfileOnStart(Profile profile)
+    {
+        if (profile.Type != ProfileType.Remote || !profile.AutoUpdate)
+        {
+            return false;
+        }
+
+        if (profile.UpdateInterval <= 0 || profile.LastUpdated == null)
+        {
+            return true;
+        }
+
+        return DateTime.Now - profile.LastUpdated.Value >= TimeSpan.FromMinutes(profile.UpdateInterval);
     }
 
     private string GetString(string key, string fallback)

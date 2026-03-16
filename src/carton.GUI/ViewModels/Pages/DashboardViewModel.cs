@@ -658,7 +658,8 @@ public partial class DashboardViewModel : PageViewModelBase
     private async Task<string?> EnsureProfileConfigPathForStartAsync(Profile profile, string profileName)
     {
         var configPath = await _configManager!.GetConfigPathAsync(profile.Id, profile.Type);
-        if (!string.IsNullOrWhiteSpace(configPath) && File.Exists(configPath))
+        var hasLocalConfig = !string.IsNullOrWhiteSpace(configPath) && File.Exists(configPath);
+        if (hasLocalConfig && !ShouldRefreshRemoteProfileOnStart(profile))
         {
             return configPath;
         }
@@ -675,9 +676,11 @@ public partial class DashboardViewModel : PageViewModelBase
             return null;
         }
 
-        var downloadingMessage = GetString("Status.RemoteConfigDownloading", "Remote config missing, downloading...");
-        StartupStatus = downloadingMessage;
-        LogInfo($"{downloadingMessage} URL: {profile.Url}");
+        var loadingMessage = hasLocalConfig
+            ? GetString("Status.RemoteConfigRefreshing", "Remote config due for update, refreshing...")
+            : GetString("Status.RemoteConfigDownloading", "Remote config missing, downloading...");
+        StartupStatus = loadingMessage;
+        LogInfo($"{loadingMessage}: {profileName} ({profile.Id}) URL: {profile.Url}");
 
         try
         {
@@ -691,6 +694,8 @@ public partial class DashboardViewModel : PageViewModelBase
             }
 
             await _configManager.SaveConfigAsync(profile.Id, content, ProfileType.Remote);
+            profile.LastUpdated = DateTime.Now;
+            await _profileManager!.UpdateAsync(profile);
             var downloadedPath = await _configManager.GetConfigPathAsync(profile.Id, ProfileType.Remote);
             if (string.IsNullOrWhiteSpace(downloadedPath) || !File.Exists(downloadedPath))
             {
@@ -699,9 +704,11 @@ public partial class DashboardViewModel : PageViewModelBase
                 return null;
             }
 
-            var downloadedMessage = GetString("Status.RemoteConfigDownloaded", "Remote config downloaded");
-            StartupStatus = downloadedMessage;
-            LogInfo($"{downloadedMessage}: {profileName} ({profile.Id})");
+            var completedMessage = hasLocalConfig
+                ? GetString("Status.RemoteConfigRefreshed", "Remote config refreshed")
+                : GetString("Status.RemoteConfigDownloaded", "Remote config downloaded");
+            StartupStatus = completedMessage;
+            LogInfo($"{completedMessage}: {profileName} ({profile.Id})");
             return downloadedPath;
         }
         catch (Exception ex)
@@ -711,6 +718,21 @@ public partial class DashboardViewModel : PageViewModelBase
             LogError($"{message}: {profileName} ({profile.Id}) - {ex.Message}");
             return null;
         }
+    }
+
+    private static bool ShouldRefreshRemoteProfileOnStart(Profile profile)
+    {
+        if (profile.Type != ProfileType.Remote || !profile.AutoUpdate)
+        {
+            return false;
+        }
+
+        if (profile.UpdateInterval <= 0 || profile.LastUpdated == null)
+        {
+            return true;
+        }
+
+        return DateTime.Now - profile.LastUpdated.Value >= TimeSpan.FromMinutes(profile.UpdateInterval);
     }
 
     private async Task LoadRuntimeOptionsAsync(int profileId)

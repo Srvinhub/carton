@@ -117,10 +117,12 @@
 	<x:String x:Key="Status.RemoteConfigUnavailable">Remote config unavailable</x:String>
 	<x:String x:Key="Status.RemoteProfileUrlEmpty">Remote profile URL is empty</x:String>
 	<x:String x:Key="Status.RemoteConfigDownloading">Remote config missing, downloading...</x:String>
-	<x:String x:Key="Status.RemoteConfigEmpty">Downloaded remote config is empty</x:String>
-	<x:String x:Key="Status.RemoteConfigFileMissing">Remote config download succeeded but file missing</x:String>
+	<x:String x:Key="Status.RemoteConfigRefreshing">Remote config due for update, refreshing...</x:String>
+	<x:String x:Key="Status.RemoteConfigEmpty">Remote config content is empty</x:String>
+	<x:String x:Key="Status.RemoteConfigFileMissing">Remote config was fetched, but the local file is missing</x:String>
 	<x:String x:Key="Status.RemoteConfigDownloaded">Remote config downloaded</x:String>
-	<x:String x:Key="Status.RemoteConfigDownloadFailed">Failed to download remote config</x:String>
+	<x:String x:Key="Status.RemoteConfigRefreshed">Remote config refreshed</x:String>
+	<x:String x:Key="Status.RemoteConfigDownloadFailed">Failed to fetch remote config</x:String>
 	<x:String x:Key="Status.KernelDownloading">Starting download...</x:String>
 	<x:String x:Key="Dashboard.Startup.ServiceUnavailable">Service unavailable</x:String>
 	<x:String x:Key="Dashboard.Startup.NoProfileAvailable">No profile available</x:String>
