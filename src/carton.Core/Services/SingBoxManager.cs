@@ -161,6 +161,7 @@ public partial class SingBoxManager : ISingBoxManager, IDisposable
         {
             UpdateStatus(ServiceStatus.Starting);
             _errorOutput.Clear();
+            ResetSessionMetrics();
 
             LogManager($"[INFO] Starting sing-box with config: {configPath}");
             LogManager($"[INFO] Binary path: {_singBoxPath}");
@@ -316,6 +317,7 @@ public partial class SingBoxManager : ISingBoxManager, IDisposable
             await StopElevatedLogTailAsync();
             _elevatedPid = null;
             _elevatedLogPath = null;
+            ResetSessionMetrics();
 
             // Ensure the system proxy is cleared even if sing-box did not
             // have a chance to clean it up itself (e.g. process was killed).
@@ -500,6 +502,16 @@ public partial class SingBoxManager : ISingBoxManager, IDisposable
         var unixOutput = await unixProcess.StandardOutput.ReadToEndAsync();
         await unixProcess.WaitForExitAsync();
         return unixProcess.ExitCode == 0 && !string.IsNullOrWhiteSpace(unixOutput);
+    }
+
+    private void ResetSessionMetrics()
+    {
+        _state.UploadSpeed = 0;
+        _state.DownloadSpeed = 0;
+        _state.TotalUpload = 0;
+        _state.TotalDownload = 0;
+        _state.ConnectionCount = 0;
+        _state.MemoryInUse = 0;
     }
 
     private async Task StopManagedProcessAsync(Process process)
