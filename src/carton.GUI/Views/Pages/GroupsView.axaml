@@ -43,11 +43,12 @@
                     ItemsSource="{Binding Groups}">
         <ItemsControl.ItemTemplate>
           <DataTemplate DataType="vm:GroupItemViewModel">
-            <Border Margin="0,0,0,8"
-                    Padding="14,12"
+            <Border Margin="0,0,0,6"
+                    Padding="14,10"
                     CornerRadius="12"
                     BorderThickness="1"
                     VerticalAlignment="Top"
+                    PointerPressed="OnGroupItemPressed"
                     Classes.expanded="{Binding IsExpanded}">
               <Border.Styles>
                 <Style Selector="Border">
@@ -65,7 +66,6 @@
                     RowSpacing="8">
                 <Grid ColumnDefinitions="*,Auto,Auto"
                       Background="Transparent"
-                      PointerPressed="OnGroupItemPressed"
                       ColumnSpacing="8">
                   <StackPanel Grid.Column="0"
                               Spacing="6">
@@ -221,7 +221,7 @@
                                     CornerRadius="10"
                                     PointerPressed="OnProxySelectPressed"/>
 
-                            <StackPanel Margin="14,12"
+                            <StackPanel Margin="14,10"
                                         Spacing="6"
                                         IsHitTestVisible="False">
                               <TextBlock helpers:EmojiTextHelper.Text="{Binding Tag}"
@@ -235,7 +235,7 @@
                             </StackPanel>
 
                             <StackPanel Orientation="Horizontal"
-                                        Margin="12,0,12,10"
+                                        Margin="12,0,12,8"
                                         Spacing="8"
                                         HorizontalAlignment="Right"
                                         VerticalAlignment="Bottom">
