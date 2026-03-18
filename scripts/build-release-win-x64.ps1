@@ -17,7 +17,7 @@ if ($Version -match "-beta" -or $Version -match "-rc" -or $Version -match "-prev
 }
 
 $publishDir = "$repoRoot\artifacts\publish\$rid"
-$packDir = "$repoRoot\artifacts\pack\$rid-$Channel"
+$packDir = "$repoRoot\artifacts\pack\$Channel"
 
 Write-Host "==== Environment ===="
 Write-Host "App Name: $appName"
