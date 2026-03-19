@@ -402,23 +402,23 @@ jobs:
           notes_file="$RUNNER_TEMP/release-notes.md"
 
           cat > "$notes_file" <<EOF
-          ## Downloads
+          ## 下载
 
-          If you are not sure which build to choose, Windows users should usually pick the \`win-x64\` installer first.
+          如果你不确定该下载哪个版本，Windows 用户优先选择 \`win-x64\` 安装版。
 
-          - Windows x64 installer: [${app_name}-${VERSION}-win-x64-Setup.exe](${base_url}/${app_name}-${VERSION}-win-x64-Setup.exe)
-          - Windows x64 portable: [${app_name}-${VERSION}-win-x64-portable.zip](${base_url}/${app_name}-${VERSION}-win-x64-portable.zip)
-          - Windows ARM64 installer: [${app_name}-${VERSION}-win-arm64-Setup.exe](${base_url}/${app_name}-${VERSION}-win-arm64-Setup.exe)
-          - Windows ARM64 portable: [${app_name}-${VERSION}-win-arm64-portable.zip](${base_url}/${app_name}-${VERSION}-win-arm64-portable.zip)
+          - Windows x64 安装版: [${app_name}-${VERSION}-win-x64-Setup.exe](${base_url}/${app_name}-${VERSION}-win-x64-Setup.exe)
+          - Windows x64 绿色版: [${app_name}-${VERSION}-win-x64-portable.zip](${base_url}/${app_name}-${VERSION}-win-x64-portable.zip)
+          - Windows ARM64 安装版: [${app_name}-${VERSION}-win-arm64-Setup.exe](${base_url}/${app_name}-${VERSION}-win-arm64-Setup.exe)
+          - Windows ARM64 绿色版: [${app_name}-${VERSION}-win-arm64-portable.zip](${base_url}/${app_name}-${VERSION}-win-arm64-portable.zip)
           - Linux x64 AppImage: [${app_name}-${VERSION}-linux-x64.AppImage](${base_url}/${app_name}-${VERSION}-linux-x64.AppImage)
-          - Linux x64 portable: [${app_name}-${VERSION}-linux-x64-portable.tar.gz](${base_url}/${app_name}-${VERSION}-linux-x64-portable.tar.gz)
+          - Linux x64 绿色版: [${app_name}-${VERSION}-linux-x64-portable.tar.gz](${base_url}/${app_name}-${VERSION}-linux-x64-portable.tar.gz)
           - Linux ARM64 AppImage: [${app_name}-${VERSION}-linux-arm64.AppImage](${base_url}/${app_name}-${VERSION}-linux-arm64.AppImage)
-          - Linux ARM64 portable: [${app_name}-${VERSION}-linux-arm64-portable.tar.gz](${base_url}/${app_name}-${VERSION}-linux-arm64-portable.tar.gz)
+          - Linux ARM64 绿色版: [${app_name}-${VERSION}-linux-arm64-portable.tar.gz](${base_url}/${app_name}-${VERSION}-linux-arm64-portable.tar.gz)
 
-          ## Notes
+          ## 说明
 
-          - Release channel: \`${CHANNEL}\`
-          - The \`.nupkg\` and \`releases*.json\` files are used for auto-update and are usually not needed for manual downloads.
+          - 当前发布通道：\`${CHANNEL}\`
+          - \`.nupkg\` 和 \`releases*.json\` 文件供自动更新使用，普通用户一般不需要手动下载。
           EOF
 
           gh release edit "$TAG" --repo "$REPO" --notes-file "$notes_file"
