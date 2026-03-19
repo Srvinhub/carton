@@ -3,21 +3,9 @@ name: Build & Publish carton (Direct Release Upload)
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'SemVer (e.g. 1.2.3 or 1.2.3-beta.1)'
-        required: true
-        type: string
-      channel:
-        description: 'Release train to publish'
-        required: true
-        type: choice
-        default: release
-        options:
-          - release
-          - beta
       tag:
-        description: 'Optional tag to create (defaults to v<version>-<channel>)'
-        required: false
+        description: 'Release tag (e.g. v1.2.3 or v1.2.3-beta.1)'
+        required: true
         type: string
 
 permissions:
@@ -45,21 +33,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="${{ inputs.version }}"
-          channel="${{ inputs.channel }}"
           tag="${{ inputs.tag }}"
 
           if [[ -z "$tag" ]]; then
-            tag="v${version}-${channel}"
+            echo "inputs.tag is required." >&2
+            exit 1
           fi
 
-          if [[ "$channel" != "beta" ]]; then
-            channel="release"
+          version="$tag"
+          if [[ "$version" == v* ]]; then
+            version="${version#v}"
           fi
 
+          channel="release"
           is_prerelease="false"
           shopt -s nocasematch
-          if [[ "$channel" == "beta" ]] || [[ "$version" == *-beta* ]] || [[ "$version" == *-rc* ]] || [[ "$version" == *-preview* ]]; then
+          if [[ "$tag" == *-beta* ]] || [[ "$tag" == *-rc* ]] || [[ "$tag" == *-preview* ]] || [[ "$version" == *-beta* ]] || [[ "$version" == *-rc* ]] || [[ "$version" == *-preview* ]]; then
+            channel="beta"
             is_prerelease="true"
           fi
           shopt -u nocasematch
@@ -97,10 +87,15 @@ jobs:
             args+=("--prerelease")
           fi
 
+          target_ref="$TARGET_SHA"
+          if gh api "repos/$REPO/git/ref/heads/$TAG" >/dev/null 2>&1; then
+            target_ref="$TAG"
+          fi
+
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             gh release edit "${args[@]}"
           else
-            gh release create "${args[@]}" --target "$TARGET_SHA" --notes ""
+            gh release create "${args[@]}" --target "$target_ref" --notes ""
           fi
 
       - name: Clear existing release assets
