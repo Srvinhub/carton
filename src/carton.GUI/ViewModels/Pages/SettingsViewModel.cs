@@ -799,6 +799,18 @@ public partial class SettingsViewModel : PageViewModelBase, IDisposable
                 _latestReleaseInfo = latestRelease;
                 LatestAvailableVersion = latestRelease.Version;
             }
+            else
+            {
+                _latestReleaseInfo = null;
+                _pendingAppUpdate = null;
+                LatestAvailableVersion = string.Empty;
+                IsAppUpdateAvailable = false;
+                IsAppUpdateReadyToInstall = false;
+                AppUpdateProgress = 0;
+                AppUpdateStatus =
+                    $"{GetString("Settings.Update.Status.Error", "Update failed")}: no release found for channel '{SelectedUpdateChannel}'";
+                return;
+            }
 
             if (_requiresManualAppUpdate)
             {
@@ -806,7 +818,8 @@ public partial class SettingsViewModel : PageViewModelBase, IDisposable
                 IsAppUpdateReadyToInstall = false;
                 AppUpdateProgress = 0;
 
-                if (latestRelease != null && IsRemoteVersionNewer(latestRelease.Version, _appUpdateService.CurrentVersion))
+                if (latestRelease != null &&
+                    IsRemoteVersionDifferent(latestRelease.Version, _appUpdateService.CurrentVersion))
                 {
                     IsAppUpdateAvailable = true;
                     AppUpdateStatus = GetString("Settings.Update.Status.ManualRequired", "New version available. Download it from the releases page.");
@@ -1083,20 +1096,8 @@ public partial class SettingsViewModel : PageViewModelBase, IDisposable
             : AppUpdateChannel.Release;
     }
 
-    private static bool IsRemoteVersionNewer(string remoteVersion, string currentVersion)
+    private static bool IsRemoteVersionDifferent(string remoteVersion, string currentVersion)
     {
-        if (SemanticVersion.TryParse(remoteVersion, out var remote) &&
-            SemanticVersion.TryParse(currentVersion, out var local))
-        {
-            return remote > local;
-        }
-
-        if (Version.TryParse(remoteVersion, out var remoteVersionParsed) &&
-            Version.TryParse(currentVersion, out var localVersionParsed))
-        {
-            return remoteVersionParsed > localVersionParsed;
-        }
-
         return !string.Equals(remoteVersion, currentVersion, StringComparison.OrdinalIgnoreCase);
     }
 

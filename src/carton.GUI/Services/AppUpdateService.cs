@@ -148,16 +148,16 @@ public sealed class AppUpdateService : IAppUpdateService
             return null;
         }
 
-        if (!IsRemoteVersionNewer(releaseInfo.Version))
+        if (!IsRemoteVersionDifferent(releaseInfo.Version))
         {
             Log($"Current version ({CurrentVersion}) is up to date for channel={channel}");
             return null;
         }
 
-        var manager = CreateManager(channel);
+        var manager = CreateManager(channel, allowVersionDowngrade: true);
         try
         {
-            Log($"Checking Velopack feed for updates (channel={channel})");
+            Log($"Checking Velopack feed for updates (channel={channel}, allowVersionDowngrade={true})");
 
             var info = await manager.CheckForUpdatesAsync().ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
@@ -195,8 +195,9 @@ public sealed class AppUpdateService : IAppUpdateService
             using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                Log($"GitHub releases fetch failed: {(int)response.StatusCode} {response.ReasonPhrase}");
-                return null;
+                var message = $"GitHub releases fetch failed: {(int)response.StatusCode} {response.ReasonPhrase}";
+                Log(message);
+                throw new HttpRequestException(message, null, response.StatusCode);
             }
 
             await using var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
@@ -270,6 +271,7 @@ public sealed class AppUpdateService : IAppUpdateService
             }
         }
 
+        Log($"No matching GitHub release found for channel={channel}");
         return null;
     }
 
@@ -330,14 +332,14 @@ public sealed class AppUpdateService : IAppUpdateService
         }
     }
 
-    private UpdateManager CreateManager(string? channel)
+    private UpdateManager CreateManager(string? channel, bool allowVersionDowngrade = false)
     {
         var normalizedChannel = ResolveVelopackChannel(channel);
 
         var options = new UpdateOptions
         {
             ExplicitChannel = normalizedChannel,
-            AllowVersionDowngrade = false,
+            AllowVersionDowngrade = allowVersionDowngrade,
             MaximumDeltasBeforeFallback = 2
         };
 
@@ -421,20 +423,8 @@ public sealed class AppUpdateService : IAppUpdateService
         }
     }
 
-    private bool IsRemoteVersionNewer(string remoteVersion)
+    private bool IsRemoteVersionDifferent(string remoteVersion)
     {
-        if (SemanticVersion.TryParse(remoteVersion, out var remote) &&
-            SemanticVersion.TryParse(CurrentVersion, out var local))
-        {
-            return remote > local;
-        }
-
-        if (Version.TryParse(remoteVersion, out var remoteVersionParsed) &&
-            Version.TryParse(CurrentVersion, out var localVersionParsed))
-        {
-            return remoteVersionParsed > localVersionParsed;
-        }
-
         return !string.Equals(remoteVersion, CurrentVersion, StringComparison.OrdinalIgnoreCase);
     }
 
