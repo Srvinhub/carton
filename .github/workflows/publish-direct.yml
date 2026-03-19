@@ -80,7 +80,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: metadata
     steps:
-      - name: Create or update draft release
+      - name: Create or update GitHub release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -92,28 +92,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          release_id="$(gh api "repos/$REPO/releases/tags/$TAG" --jq '.id' 2>/dev/null || true)"
-          if [[ ! "$release_id" =~ ^[0-9]+$ ]]; then
-            release_id=""
+          args=("$TAG" "--repo" "$REPO" "--title" "$RELEASE_NAME")
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            args+=("--prerelease")
           fi
 
-          if [[ -n "$release_id" ]]; then
-            gh api "repos/$REPO/releases/$release_id" \
-              --method PATCH \
-              -f name="$RELEASE_NAME" \
-              -F draft=true \
-              -F prerelease="$IS_PRERELEASE" \
-              >/dev/null
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release edit "${args[@]}"
           else
-            gh api "repos/$REPO/releases" \
-              --method POST \
-              -f tag_name="$TAG" \
-              -f target_commitish="$TARGET_SHA" \
-              -f name="$RELEASE_NAME" \
-              -f body="" \
-              -F draft=true \
-              -F prerelease="$IS_PRERELEASE" \
-              >/dev/null
+            gh release create "${args[@]}" --target "$TARGET_SHA" --notes ""
           fi
 
       - name: Clear existing release assets
@@ -435,16 +422,3 @@ jobs:
           EOF
 
           gh release edit "$TAG" --repo "$REPO" --notes-file "$notes_file"
-
-          release_id="$(gh api "repos/$REPO/releases/tags/$TAG" --jq '.id' 2>/dev/null || true)"
-          if [[ ! "$release_id" =~ ^[0-9]+$ ]]; then
-            echo "Failed to resolve release id for tag: $TAG" >&2
-            exit 1
-          fi
-
-          gh api "repos/$REPO/releases/$release_id" \
-            --method PATCH \
-            -f name="$RELEASE_NAME" \
-            -F draft=false \
-            -F prerelease="$IS_PRERELEASE" \
-            >/dev/null
