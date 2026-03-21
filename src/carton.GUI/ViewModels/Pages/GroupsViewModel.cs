@@ -415,7 +415,6 @@ public partial class GroupsViewModel : PageViewModelBase
         try
         {
             await _singBoxManager.SelectOutboundAsync(groupTag, outboundTag);
-            await DisconnectAffectedConnectionsAsync(groupTag);
 
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
@@ -429,6 +428,8 @@ public partial class GroupsViewModel : PageViewModelBase
                 RecalculateEffectiveDelays();
                 StatusMessage = $"Selected {outboundTag} for {groupTag}";
             });
+
+            StartDisconnectAffectedConnectionsInBackground(groupTag);
         }
         catch (Exception ex)
         {
@@ -437,6 +438,27 @@ public partial class GroupsViewModel : PageViewModelBase
                 StatusMessage = $"Failed to select outbound: {ex.Message}";
             });
         }
+    }
+
+    private void StartDisconnectAffectedConnectionsInBackground(string groupTag)
+    {
+        if (_singBoxManager == null ||
+            string.IsNullOrWhiteSpace(groupTag) ||
+            !ShouldAutoDisconnectConnectionsOnNodeSwitch())
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await DisconnectAffectedConnectionsAsync(groupTag);
+            }
+            catch
+            {
+            }
+        });
     }
 
     private async Task DisconnectAffectedConnectionsAsync(string groupTag)

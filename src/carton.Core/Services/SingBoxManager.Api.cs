@@ -82,18 +82,13 @@ public partial class SingBoxManager
 
     public async Task SelectOutboundAsync(string groupTag, string outboundTag)
     {
-        try
-        {
-            var request = new OutboundSelectionRequest { Name = outboundTag };
-            var payload = JsonSerializer.Serialize(
-                request,
-                CartonCoreJsonContext.Default.OutboundSelectionRequest);
-            var content = new StringContent(payload, Encoding.UTF8, "application/json");
-            await _httpClient.PutAsync($"{_apiAddress}/proxies/{Uri.EscapeDataString(groupTag)}", content);
-        }
-        catch
-        {
-        }
+        var request = new OutboundSelectionRequest { Name = outboundTag };
+        var payload = JsonSerializer.Serialize(
+            request,
+            CartonCoreJsonContext.Default.OutboundSelectionRequest);
+        var content = new StringContent(payload, Encoding.UTF8, "application/json");
+        using var response = await _httpClient.PutAsync($"{_apiAddress}/proxies/{Uri.EscapeDataString(groupTag)}", content);
+        response.EnsureSuccessStatusCode();
     }
 
     public async Task<Dictionary<string, int>> RunGroupDelayTestAsync(string groupTag, string? testUrl = null, int timeoutMs = 5000)
