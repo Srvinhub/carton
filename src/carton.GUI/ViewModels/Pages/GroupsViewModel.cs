@@ -714,7 +714,7 @@ public partial class GroupsViewModel : PageViewModelBase
         }
 
         CollapseExpandedGroup();
-        PopulateExpandedProxyItems(cachedGroup, group.SelectOutboundCommand);
+        SyncExpandedProxyItems(cachedGroup, group.SelectOutboundCommand);
         group.Items = _expandedProxyItems;
         group.IsExpanded = true;
         _expandedGroupName = group.Name;
@@ -752,22 +752,7 @@ public partial class GroupsViewModel : PageViewModelBase
 
         foreach (var item in cachedGroup.Items)
         {
-            var viewModel = new OutboundItemViewModel
-            {
-                Tag = item.Tag,
-                Type = item.Type,
-                Delay = item.Delay,
-                RawDelay = item.RawDelay,
-                IsSelected = item.IsSelected,
-                IsTesting = _testingOutboundTags.Contains(item.Tag),
-                SelectOutboundCommand = selectOutboundCommand
-            };
-
-            viewModel.TestDelayCommand = new AsyncRelayCommand(
-                () => TestOutboundAsync(viewModel),
-                () => _singBoxManager?.IsRunning == true && !viewModel.IsTesting);
-
-            _expandedProxyItems.Add(viewModel);
+            _expandedProxyItems.Add(CreateExpandedProxyItemViewModel(item, selectOutboundCommand));
         }
     }
 
@@ -1431,10 +1416,109 @@ public partial class GroupsViewModel : PageViewModelBase
         }
 
         var selectCommand = expandedGroup.SelectOutboundCommand;
-        _expandedProxyItems.Clear();
-        PopulateExpandedProxyItems(cachedGroup, selectCommand);
-        expandedGroup.Items = _expandedProxyItems;
+        SyncExpandedProxyItems(cachedGroup, selectCommand);
+        if (!ReferenceEquals(expandedGroup.Items, _expandedProxyItems))
+        {
+            expandedGroup.Items = _expandedProxyItems;
+        }
         expandedGroup.UpdateItemSelection();
+    }
+
+    private void SyncExpandedProxyItems(
+        GroupCacheSnapshot cachedGroup,
+        IAsyncRelayCommand<string>? selectOutboundCommand)
+    {
+        if (_expandedProxyItems.Count == 0)
+        {
+            PopulateExpandedProxyItems(cachedGroup, selectOutboundCommand);
+            return;
+        }
+
+        var existingItemLookup = new Dictionary<string, Queue<OutboundItemViewModel>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var existingItem in _expandedProxyItems)
+        {
+            if (!existingItemLookup.TryGetValue(existingItem.Tag, out var queue))
+            {
+                queue = new Queue<OutboundItemViewModel>();
+                existingItemLookup[existingItem.Tag] = queue;
+            }
+
+            queue.Enqueue(existingItem);
+        }
+
+        var desiredItems = new List<OutboundItemViewModel>(cachedGroup.Items.Count);
+        foreach (var item in cachedGroup.Items)
+        {
+            OutboundItemViewModel? viewModel = null;
+            if (existingItemLookup.TryGetValue(item.Tag, out var queue) && queue.Count > 0)
+            {
+                viewModel = queue.Dequeue();
+            }
+
+            viewModel ??= CreateExpandedProxyItemViewModel(item, selectOutboundCommand);
+            UpdateExpandedProxyItemViewModel(viewModel, item, selectOutboundCommand);
+            desiredItems.Add(viewModel);
+        }
+
+        for (var i = 0; i < desiredItems.Count; i++)
+        {
+            var desiredItem = desiredItems[i];
+            if (i >= _expandedProxyItems.Count)
+            {
+                _expandedProxyItems.Add(desiredItem);
+                continue;
+            }
+
+            if (ReferenceEquals(_expandedProxyItems[i], desiredItem))
+            {
+                continue;
+            }
+
+            var existingIndex = _expandedProxyItems.IndexOf(desiredItem);
+            if (existingIndex >= 0)
+            {
+                _expandedProxyItems.Move(existingIndex, i);
+                continue;
+            }
+
+            _expandedProxyItems.Insert(i, desiredItem);
+        }
+
+        while (_expandedProxyItems.Count > desiredItems.Count)
+        {
+            _expandedProxyItems.RemoveAt(_expandedProxyItems.Count - 1);
+        }
+    }
+
+    private OutboundItemViewModel CreateExpandedProxyItemViewModel(
+        OutboundCacheSnapshot item,
+        IAsyncRelayCommand<string>? selectOutboundCommand)
+    {
+        var viewModel = new OutboundItemViewModel();
+        UpdateExpandedProxyItemViewModel(viewModel, item, selectOutboundCommand);
+        viewModel.TestDelayCommand = new AsyncRelayCommand(
+            () => TestOutboundAsync(viewModel),
+            () => _singBoxManager?.IsRunning == true && !viewModel.IsTesting);
+        return viewModel;
+    }
+
+    private void UpdateExpandedProxyItemViewModel(
+        OutboundItemViewModel viewModel,
+        OutboundCacheSnapshot item,
+        IAsyncRelayCommand<string>? selectOutboundCommand)
+    {
+        viewModel.Tag = item.Tag;
+        viewModel.Type = item.Type;
+        viewModel.Delay = item.Delay;
+        viewModel.RawDelay = item.RawDelay;
+        viewModel.IsSelected = item.IsSelected;
+        viewModel.IsTesting = _testingOutboundTags.Contains(item.Tag);
+        viewModel.SelectOutboundCommand = selectOutboundCommand;
+
+        if (viewModel.TestDelayCommand is AsyncRelayCommand asyncCommand)
+        {
+            asyncCommand.NotifyCanExecuteChanged();
+        }
     }
 
     private void UpdateCachedRawDelay(string tag, int delay)
