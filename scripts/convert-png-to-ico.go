@@ -34,13 +34,19 @@ func main() {
 			*inputPath = filepath.Join(repoRoot, "src", "carton.GUI", "Assets", "carton_icon.png")
 		}
 	} else if !filepath.IsAbs(*inputPath) {
-		*inputPath = filepath.Join(repoRoot, filepath.Clean(*inputPath))
+		*inputPath, err = filepath.Abs(*inputPath)
+		if err != nil {
+			exitf("resolve input path: %v", err)
+		}
 	}
 
 	if *outputPath == "" {
 		*outputPath = filepath.Join(repoRoot, "src", "carton.GUI", "Assets", "carton_icon.ico")
 	} else if !filepath.IsAbs(*outputPath) {
-		*outputPath = filepath.Join(repoRoot, filepath.Clean(*outputPath))
+		*outputPath, err = filepath.Abs(*outputPath)
+		if err != nil {
+			exitf("resolve output path: %v", err)
+		}
 	}
 
 	sizes, err := parseSizes(*sizesArg)
