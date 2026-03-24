@@ -200,11 +200,12 @@
                               <Setter Property="BorderThickness" Value="1"/>
                             </Style>
                             <Style Selector="Border.hovered">
-                              <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeHighBrush}"/>
+                              <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltHighBrush}"/>
                             </Style>
                             <Style Selector="Border.selected">
+                              <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeHighBrush}"/>
                               <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColor}"/>
-                              <Setter Property="BorderThickness" Value="4"/>
+                              <Setter Property="BorderThickness" Value="2"/>
                             </Style>
                           </Border.Styles>
 
@@ -212,7 +213,7 @@
                             <Border
                                     Background="{DynamicResource SystemAccentColor}"
                                     CornerRadius="9"
-                                    Opacity="0.16"
+                                    Opacity="0.28"
                                     IsHitTestVisible="False"
                                     IsVisible="{Binding IsSelected}"/>
 
