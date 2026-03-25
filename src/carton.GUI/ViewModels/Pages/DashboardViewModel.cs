@@ -96,6 +96,49 @@ public partial class DashboardViewModel : PageViewModelBase
     [RelayCommand]
     private Task CopyLinuxTerminalProxy() => CopyTerminalProxyAsync("linux");
 
+    [RelayCommand]
+    private async Task ResetRuntimeOptionsToConfig()
+    {
+        if (_profileManager == null)
+        {
+            var message = GetString("Dashboard.Status.ResetRuntimeOptionsFailed", "Failed to reset options to config values");
+            StartupStatus = message;
+            LogError(message);
+            return;
+        }
+
+        var target = SelectedStartupProfile ?? AvailableProfiles.FirstOrDefault();
+        if (target == null)
+        {
+            var message = GetString("Dashboard.Startup.NoProfileAvailable", "No profile available");
+            StartupStatus = message;
+            LogError(message);
+            return;
+        }
+
+        try
+        {
+            var options = await _profileManager.ResetRuntimeOptionsToConfigAsync(target.Id);
+            if (options == null)
+            {
+                var message = GetString("Dashboard.Status.ResetRuntimeOptionsUnavailable", "Config values are unavailable for reset");
+                StartupStatus = message;
+                LogError($"{message}: {target.Name} ({target.Id})");
+                return;
+            }
+
+            ApplyRuntimeOptions(options);
+            StartupStatus = GetString("Dashboard.Status.RuntimeOptionsResetToConfig", "Options reset to config values");
+            LogInfo($"{StartupStatus}: {target.Name} ({target.Id})");
+        }
+        catch (Exception ex)
+        {
+            var message = GetString("Dashboard.Status.ResetRuntimeOptionsFailed", "Failed to reset options to config values");
+            StartupStatus = $"{message}: {ex.Message}";
+            LogError($"{message}: {target.Name} ({target.Id}): {ex.Message}");
+        }
+    }
+
     private async Task CopyTerminalProxyAsync(string type)
     {
         if (!int.TryParse(InboundPortText, out var port)) port = 2028;

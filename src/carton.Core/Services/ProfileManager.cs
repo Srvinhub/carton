@@ -19,6 +19,7 @@ public interface IProfileManager
     Task SetSelectedProfileIdAsync(int id);
     Task<ProfileRuntimeOptions> GetRuntimeOptionsAsync(int profileId);
     Task SaveRuntimeOptionsAsync(int profileId, ProfileRuntimeOptions options);
+    Task<ProfileRuntimeOptions?> ResetRuntimeOptionsToConfigAsync(int profileId);
 }
 
 public class ProfileManager : IProfileManager
@@ -218,6 +219,39 @@ public class ProfileManager : IProfileManager
             normalized.LogLevelInitialized = true;
             profile.RuntimeOptions = normalized;
             await SaveDataUnlockedAsync(data);
+        }
+        finally
+        {
+            _syncLock.Release();
+        }
+    }
+
+    public async Task<ProfileRuntimeOptions?> ResetRuntimeOptionsToConfigAsync(int profileId)
+    {
+        await _syncLock.WaitAsync();
+        try
+        {
+            var data = await LoadOrCreateDataUnlockedAsync();
+            var profile = FindProfileById(data.Profiles, profileId);
+            if (profile == null)
+            {
+                return null;
+            }
+
+            var resolved = await TryLoadRuntimeOptionsFromConfigAsync(profileId);
+            if (resolved == null)
+            {
+                return null;
+            }
+
+            resolved.Initialized = true;
+            resolved.InboundPort = NormalizePort(resolved.InboundPort);
+            resolved.LogLevel = NormalizeLogLevel(resolved.LogLevel);
+            resolved.LogLevelInitialized = true;
+
+            profile.RuntimeOptions = CloneRuntimeOptions(resolved);
+            await SaveDataUnlockedAsync(data);
+            return CloneRuntimeOptions(profile.RuntimeOptions);
         }
         finally
         {

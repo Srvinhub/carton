@@ -49,8 +49,14 @@
                           IsChecked="{Binding AllowLanConnections}"/>
                 <CheckBox Content="{DynamicResource Dashboard.Option.SystemProxy}"
                           IsChecked="{Binding EnableSystemProxy}"/>
-                <CheckBox Content="{DynamicResource Dashboard.Option.Tun}"
-                          IsChecked="{Binding EnableTunInbound}"/>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <CheckBox Content="{DynamicResource Dashboard.Option.Tun}"
+                            IsChecked="{Binding EnableTunInbound}"/>
+                  <Button Content="{DynamicResource Dashboard.Button.ResetToConfig}"
+                          Command="{Binding ResetRuntimeOptionsToConfigCommand}"
+                          Padding="10,2"
+                          VerticalAlignment="Center"/>
+                </StackPanel>
               </StackPanel>
             </StackPanel>
           </Border>
