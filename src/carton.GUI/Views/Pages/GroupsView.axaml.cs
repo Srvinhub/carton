@@ -1,3 +1,4 @@
+using System;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -8,6 +9,12 @@ namespace carton.Views.Pages;
 
 public partial class GroupsView : UserControl
 {
+    private const double ProxyToolTipMinWidth = 72;
+    private const double ProxyToolTipMaxWidth = 280;
+    private const double ProxyToolTipAverageCharWidth = 7;
+    private const double ProxyToolTipHorizontalPadding = 24;
+    private const double ProxyToolTipOffset = 12;
+
     public GroupsView()
     {
         InitializeComponent();
@@ -101,19 +108,87 @@ public partial class GroupsView : UserControl
         e.Handled = true;
     }
 
-    private void OnProxyPointerEntered(object? sender, PointerEventArgs e)
+    private void OnProxySelectSurfacePointerEntered(object? sender, PointerEventArgs e)
     {
-        if (sender is Control { DataContext: OutboundItemViewModel item })
-        {
-            item.IsHovered = true;
-        }
+        UpdateProxyToolTipPlacement(sender);
+        SetProxyItemHoveredClass(sender, isHovered: true);
     }
 
-    private void OnProxyPointerExited(object? sender, PointerEventArgs e)
+    private void OnProxySelectSurfacePointerExited(object? sender, PointerEventArgs e)
     {
-        if (sender is Control { DataContext: OutboundItemViewModel item })
-        {
-            item.IsHovered = false;
-        }
+        SetProxyItemHoveredClass(sender, isHovered: false);
     }
+
+    private static void SetProxyItemHoveredClass(object? sender, bool isHovered)
+    {
+        if (!TryGetProxyItemBorder(sender, out var border))
+        {
+            return;
+        }
+
+        border.Classes.Set("hovered", isHovered);
+    }
+
+    private static bool TryGetProxyItemBorder(object? sender, out Border? border)
+    {
+        if (sender is not Visual sourceVisual)
+        {
+            border = null;
+            return false;
+        }
+
+        for (Visual? current = sourceVisual; current != null; current = current.GetVisualParent() as Visual)
+        {
+            if (current is Border { Name: "ProxyItemBorder" } candidate)
+            {
+                border = candidate;
+                return true;
+            }
+        }
+
+        border = null;
+        return false;
+    }
+
+    private static void UpdateProxyToolTipPlacement(object? sender)
+    {
+        if (sender is not Control { DataContext: OutboundItemViewModel item } ||
+            !TryGetProxyItemBorder(sender, out var border) || border == null)
+        {
+            return;
+        }
+
+        var topLevel = TopLevel.GetTopLevel(border);
+        if (topLevel == null)
+        {
+            return;
+        }
+
+        var topLeft = border.TranslatePoint(new Point(0, 0), topLevel);
+        if (topLeft == null)
+        {
+            return;
+        }
+
+        var preferredWidth = EstimateProxyToolTipWidth(item);
+        var availableRight = topLevel.Bounds.Width - (topLeft.Value.X + border.Bounds.Width);
+        var availableLeft = topLeft.Value.X;
+        var requiredWidth = preferredWidth + ProxyToolTipOffset;
+        var placeLeft = availableRight < requiredWidth && availableLeft > availableRight;
+
+        ToolTip.SetPlacement(border, placeLeft ? PlacementMode.Left : PlacementMode.Right);
+        ToolTip.SetHorizontalOffset(border, placeLeft ? -ProxyToolTipOffset : ProxyToolTipOffset);
+    }
+
+    private static double EstimateProxyToolTipWidth(OutboundItemViewModel item)
+    {
+        if (string.IsNullOrWhiteSpace(item.Tag))
+        {
+            return ProxyToolTipMinWidth;
+        }
+
+        var estimatedWidth = item.Tag.Length * ProxyToolTipAverageCharWidth + ProxyToolTipHorizontalPadding;
+        return Math.Clamp(estimatedWidth, ProxyToolTipMinWidth, ProxyToolTipMaxWidth);
+    }
+
 }

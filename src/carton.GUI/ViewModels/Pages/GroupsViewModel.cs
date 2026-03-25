@@ -1745,9 +1745,6 @@ public partial class OutboundItemViewModel : ObservableObject
     [ObservableProperty]
     private bool _isTesting;
 
-    [ObservableProperty]
-    private bool _isHovered;
-
     public string DelayDisplay => IsTesting ? "..." : Delay > 0 ? $"{Delay}ms" : string.Empty;
 
     public string DelayDisplayOrIcon => IsTesting ? "..." : Delay > 0 ? $"{Delay}ms" : "\u26A1";
