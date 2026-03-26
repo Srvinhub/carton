@@ -12,6 +12,12 @@
       <Setter Property="CornerRadius" Value="16"/>
     </Style>
 
+    <Style Selector="Border.clashModeTrack">
+      <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+      <Setter Property="CornerRadius" Value="14"/>
+      <Setter Property="Padding" Value="4"/>
+    </Style>
+
     <Style Selector="Button.iconButton">
       <Setter Property="Width" Value="30"/>
       <Setter Property="Height" Value="30"/>
@@ -30,6 +36,40 @@
 
     <Style Selector="Button.iconButton:pressed">
       <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
+    </Style>
+
+    <Style Selector="RadioButton.clashModeSegment">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="14,8"/>
+      <Setter Property="MinHeight" Value="32"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}"
+                  CornerRadius="10"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+
+    <Style Selector="RadioButton.clashModeSegment:pointerover">
+      <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+    </Style>
+
+    <Style Selector="RadioButton.clashModeSegment:checked">
+      <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
     </Style>
 
   </UserControl.Styles>
@@ -270,7 +310,7 @@
         </Border>
 
         <StackPanel Spacing="16">
-          <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+          <Grid ColumnDefinitions="*,*,0.95*" ColumnSpacing="16">
             <Border Classes="card sfmCard" Padding="16">
               <StackPanel Spacing="12">
                 <StackPanel Orientation="Horizontal" Spacing="10">
@@ -378,10 +418,8 @@
                 </Border>
               </StackPanel>
             </Border>
-          </Grid>
 
-          <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
-            <Border Classes="card sfmCard" Padding="16">
+            <Border Grid.Column="2" Classes="card sfmCard" Padding="16">
               <StackPanel Spacing="12">
                 <StackPanel Orientation="Horizontal" Spacing="10">
                   <PathIcon Width="16"
@@ -415,39 +453,43 @@
                 </Grid>
               </StackPanel>
             </Border>
+          </Grid>
 
-            <Border Grid.Column="1" Classes="card sfmCard" Padding="16">
-              <StackPanel Spacing="12">
-                <StackPanel Orientation="Horizontal" Spacing="10">
-                  <PathIcon Width="16"
-                            Height="16"
-                            Data="M4 4 H10 V10 H4 Z M14 4 H20 V10 H14 Z M4 14 H10 V20 H4 Z M14 14 H20 V20 H14 Z"
-                            VerticalAlignment="Center"/>
-                  <TextBlock Text="{DynamicResource Dashboard.ClashMode}"
-                             FontSize="17"
-                             FontWeight="Bold"
-                             VerticalAlignment="Center"/>
-                </StackPanel>
+          <Border Classes="card sfmCard" Padding="16">
+            <StackPanel Spacing="12">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <PathIcon Width="16"
+                          Height="16"
+                          Data="M4 4 H10 V10 H4 Z M14 4 H20 V10 H14 Z M4 14 H10 V20 H4 Z M14 14 H20 V20 H14 Z"
+                          VerticalAlignment="Center"/>
+                <TextBlock Text="{DynamicResource Dashboard.ClashMode}"
+                           FontSize="17"
+                           FontWeight="Bold"
+                           VerticalAlignment="Center"/>
+              </StackPanel>
 
+              <Border Classes="clashModeTrack">
                 <ItemsControl ItemsSource="{Binding ClashModeOptions}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <UniformGrid Rows="1"
+                                   Columns="{Binding ClashModeColumnCount}"/>
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="vm:DashboardClashModeOptionViewModel">
-                      <Border Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
-                              CornerRadius="12"
-                              Padding="12,8"
-                              Margin="0,0,0,6">
-                        <RadioButton Content="{Binding DisplayName}"
-                                     GroupName="clash-mode"
-                                     IsChecked="{Binding IsSelected}"
-                                     Command="{Binding $parent[ItemsControl].((vm:DashboardViewModel)DataContext).ChangeClashModeCommand}"
-                                     CommandParameter="{Binding}"/>
-                      </Border>
+                      <RadioButton Classes="clashModeSegment"
+                                   Content="{Binding DisplayName}"
+                                   GroupName="clash-mode"
+                                   IsChecked="{Binding IsSelected}"
+                                   Command="{Binding $parent[ItemsControl].((vm:DashboardViewModel)DataContext).ChangeClashModeCommand}"
+                                   CommandParameter="{Binding}"/>
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
-              </StackPanel>
-            </Border>
-          </Grid>
+              </Border>
+            </StackPanel>
+          </Border>
         </StackPanel>
       </StackPanel>
     </StackPanel>

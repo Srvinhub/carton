@@ -96,6 +96,8 @@ public partial class DashboardViewModel : PageViewModelBase
 
     public ObservableCollection<DashboardClashModeOptionViewModel> ClashModeOptions { get; } = new();
 
+    public int ClashModeColumnCount => Math.Max(1, ClashModeOptions.Count);
+
     [ObservableProperty]
     private DashboardProfileItemViewModel? _selectedStartupProfile;
 
@@ -1519,6 +1521,8 @@ public partial class DashboardViewModel : PageViewModelBase
                 DisplayName = mode
             });
         }
+
+        OnPropertyChanged(nameof(ClashModeColumnCount));
     }
 
     private static string FormatBytes(long bytes) => FormatHelper.FormatBytes(bytes);
