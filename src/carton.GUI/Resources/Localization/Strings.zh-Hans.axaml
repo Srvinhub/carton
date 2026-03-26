@@ -154,6 +154,13 @@
 	<x:String x:Key="Settings.General.StartAtLogin">开机启动</x:String>
 	<x:String x:Key="Settings.General.AutoStartOnLaunch">打开 Carton 时自动启动</x:String>
 	<x:String x:Key="Settings.General.AutoDisconnectConnectionsOnNodeSwitch">切换节点时自动断开连接</x:String>
+	<x:String x:Key="Settings.General.UwpLoopback.Title">UWP 代理回环</x:String>
+	<x:String x:Key="Settings.General.UwpLoopback.Description">启动回环解锁工具，让 UWP 应用可以访问本地代理。</x:String>
+	<x:String x:Key="Settings.General.UwpLoopback.Action">打开工具</x:String>
+	<x:String x:Key="Settings.General.UwpLoopback.Launched">已启动回环解锁工具，请在 UAC 提示中确认继续。</x:String>
+	<x:String x:Key="Settings.General.UwpLoopback.Missing">未在应用目录中找到 EnableLoopback.exe。</x:String>
+	<x:String x:Key="Settings.General.UwpLoopback.Cancelled">已取消启动回环解锁工具。</x:String>
+	<x:String x:Key="Settings.General.UwpLoopback.Failed">启动回环解锁工具失败</x:String>
 
 	<x:String x:Key="Settings.Section.Update">应用更新</x:String>
 	<x:String x:Key="Settings.Update.Channel">更新通道</x:String>

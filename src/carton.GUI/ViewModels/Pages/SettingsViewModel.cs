@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
@@ -50,6 +51,12 @@ public partial class SettingsViewModel : PageViewModelBase, IDisposable
     private bool _autoDisconnectConnectionsOnNodeSwitch = true;
 
     [ObservableProperty]
+    private bool _isLoopbackOperationInProgress;
+
+    [ObservableProperty]
+    private string _loopbackStatus = string.Empty;
+
+    [ObservableProperty]
     private AppTheme _selectedTheme = AppTheme.System;
 
     [ObservableProperty]
@@ -76,6 +83,7 @@ public partial class SettingsViewModel : PageViewModelBase, IDisposable
     partial void OnSelectedLanguageChanged(LanguageOptionViewModel? value) => OnLanguageOptionChanged(value);
     partial void OnSelectedUpdateChannelChanged(string value) => OnUpdateChannelChanged(value);
     partial void OnAutoCheckAppUpdatesChanged(bool value) => UpdatePreference(p => p.AutoCheckAppUpdates = value);
+    partial void OnLoopbackStatusChanged(string value) => OnPropertyChanged(nameof(HasLoopbackStatus));
     partial void OnSelectedKernelDownloadMirrorChanged(DownloadMirror value)
     {
         ClearPendingKernelPackage();
@@ -156,6 +164,8 @@ public partial class SettingsViewModel : PageViewModelBase, IDisposable
     public ObservableCollection<DownloadMirror> KernelDownloadMirrors { get; } = new(Enum.GetValues<DownloadMirror>());
     public ObservableCollection<LanguageOptionViewModel> Languages { get; } = new();
     public ObservableCollection<UpdateChannelOptionViewModel> UpdateChannels { get; } = new();
+    public bool IsWindows => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+    public bool HasLoopbackStatus => !string.IsNullOrWhiteSpace(LoopbackStatus);
 
     public SettingsViewModel()
     {
@@ -455,6 +465,55 @@ public partial class SettingsViewModel : PageViewModelBase, IDisposable
         }
 
         await RefreshKernelInfoAsync();
+    }
+
+    [RelayCommand]
+    private void OpenLoopbackTool()
+    {
+        if (!IsWindows || IsLoopbackOperationInProgress)
+        {
+            return;
+        }
+
+        IsLoopbackOperationInProgress = true;
+        try
+        {
+            var toolPath = GetLoopbackToolPath();
+            if (!File.Exists(toolPath))
+            {
+                LoopbackStatus = GetString(
+                    "Settings.General.UwpLoopback.Missing",
+                    "EnableLoopback.exe was not found in the application directory.");
+                return;
+            }
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = toolPath,
+                WorkingDirectory = Path.GetDirectoryName(toolPath) ?? AppContext.BaseDirectory,
+                UseShellExecute = true,
+                Verb = "runas"
+            });
+
+            LoopbackStatus = GetString(
+                "Settings.General.UwpLoopback.Launched",
+                "Loopback tool launched. Approve the UAC prompt to continue.");
+        }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
+        {
+            LoopbackStatus = GetString(
+                "Settings.General.UwpLoopback.Cancelled",
+                "Loopback tool launch was canceled.");
+        }
+        catch (Exception ex)
+        {
+            LoopbackStatus =
+                $"{GetString("Settings.General.UwpLoopback.Failed", "Failed to launch loopback tool")}: {ex.Message}";
+        }
+        finally
+        {
+            IsLoopbackOperationInProgress = false;
+        }
     }
 
     private async Task<bool> ApplyPendingKernelPackageAsync(KernelPackageDownloadResult package)
@@ -1103,6 +1162,9 @@ public partial class SettingsViewModel : PageViewModelBase, IDisposable
 
     private static string UpdateChannelToString(AppUpdateChannel channel)
         => channel == AppUpdateChannel.Beta ? "beta" : "release";
+
+    private static string GetLoopbackToolPath()
+        => Path.Combine(AppContext.BaseDirectory, "EnableLoopback.exe");
 
     private async Task ExportBackupAsync(string zipPath)
     {

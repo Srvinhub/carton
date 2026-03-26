@@ -81,6 +81,25 @@
           <CheckBox Content="{DynamicResource Settings.General.StartAtLogin}" IsChecked="{Binding StartAtLogin}"/>
           <CheckBox Content="{DynamicResource Settings.General.AutoStartOnLaunch}" IsChecked="{Binding AutoStartOnLaunch}"/>
           <CheckBox Content="{DynamicResource Settings.General.AutoDisconnectConnectionsOnNodeSwitch}" IsChecked="{Binding AutoDisconnectConnectionsOnNodeSwitch}"/>
+          <Grid ColumnDefinitions="*,Auto"
+                ColumnSpacing="12"
+                IsVisible="{Binding IsWindows}">
+            <StackPanel Spacing="4">
+              <TextBlock Text="{DynamicResource Settings.General.UwpLoopback.Title}" FontWeight="Medium"/>
+              <TextBlock Text="{DynamicResource Settings.General.UwpLoopback.Description}"
+                         Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                         TextWrapping="Wrap"/>
+            </StackPanel>
+            <Button Grid.Column="1"
+                    Content="{DynamicResource Settings.General.UwpLoopback.Action}"
+                    Command="{Binding OpenLoopbackToolCommand}"
+                    IsEnabled="{Binding !IsLoopbackOperationInProgress}"
+                    VerticalAlignment="Top"/>
+          </Grid>
+          <TextBlock Text="{Binding LoopbackStatus}"
+                     IsVisible="{Binding HasLoopbackStatus}"
+                     Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                     TextWrapping="Wrap"/>
         </StackPanel>
       </Border>
 

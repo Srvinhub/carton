@@ -13,7 +13,7 @@ macOS
 .AppleDouble
 .LSOverride
 
-Windows
+# Windows
 Thumbs.db
 ehthumbs.db
 Desktop.ini

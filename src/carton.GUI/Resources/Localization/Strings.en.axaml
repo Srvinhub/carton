@@ -158,6 +158,13 @@
 	<x:String x:Key="Settings.General.StartAtLogin">Start at Login</x:String>
 	<x:String x:Key="Settings.General.AutoStartOnLaunch">Auto start Carton when opened</x:String>
 	<x:String x:Key="Settings.General.AutoDisconnectConnectionsOnNodeSwitch">Auto disconnect connections on node switch</x:String>
+	<x:String x:Key="Settings.General.UwpLoopback.Title">UWP Proxy Loopback</x:String>
+	<x:String x:Key="Settings.General.UwpLoopback.Description">Launch the loopback unlock tool so UWP apps can access the local proxy.</x:String>
+	<x:String x:Key="Settings.General.UwpLoopback.Action">Open Tool</x:String>
+	<x:String x:Key="Settings.General.UwpLoopback.Launched">Loopback tool launched. Approve the UAC prompt to continue.</x:String>
+	<x:String x:Key="Settings.General.UwpLoopback.Missing">EnableLoopback.exe was not found in the application directory.</x:String>
+	<x:String x:Key="Settings.General.UwpLoopback.Cancelled">Loopback tool launch was canceled.</x:String>
+	<x:String x:Key="Settings.General.UwpLoopback.Failed">Failed to launch loopback tool</x:String>
 
 	<x:String x:Key="Settings.Section.Update">Updates</x:String>
 	<x:String x:Key="Settings.Update.Channel">Channel</x:String>

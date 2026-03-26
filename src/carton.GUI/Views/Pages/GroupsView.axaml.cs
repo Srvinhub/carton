@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -129,7 +130,7 @@ public partial class GroupsView : UserControl
         border.Classes.Set("hovered", isHovered);
     }
 
-    private static bool TryGetProxyItemBorder(object? sender, out Border? border)
+    private static bool TryGetProxyItemBorder(object? sender, [NotNullWhen(true)] out Border? border)
     {
         if (sender is not Visual sourceVisual)
         {
