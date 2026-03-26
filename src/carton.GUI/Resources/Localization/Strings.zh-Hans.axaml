@@ -105,6 +105,8 @@
 	<x:String x:Key="Dashboard.Button.CopyLinuxProxy">终端代理</x:String>
 	<x:String x:Key="Dashboard.Menu.CopyCommand">拷贝命令</x:String>
 	<x:String x:Key="Dashboard.Menu.OpenTool">打开工具</x:String>
+	<x:String x:Key="Dashboard.Menu.OpenCmd">打开 CMD</x:String>
+	<x:String x:Key="Dashboard.Menu.OpenPs">打开 PowerShell</x:String>
 	<x:String x:Key="Dashboard.Button.OpenWebUi">访问 WebUI</x:String>
 	<x:String x:Key="Dashboard.Status.OpenWebUiFailed">打开 WebUI 失败</x:String>
   <x:String x:Key="Dashboard.Status.SystemProxyToggleFailed">切换系统代理失败</x:String>

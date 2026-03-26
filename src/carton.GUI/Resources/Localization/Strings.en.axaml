@@ -106,6 +106,8 @@
 	<x:String x:Key="Dashboard.Button.CopyLinuxProxy">Terminal Proxy</x:String>
 	<x:String x:Key="Dashboard.Menu.CopyCommand">Copy Command</x:String>
 	<x:String x:Key="Dashboard.Menu.OpenTool">Open Tool</x:String>
+	<x:String x:Key="Dashboard.Menu.OpenCmd">Open CMD</x:String>
+	<x:String x:Key="Dashboard.Menu.OpenPs">Open PowerShell</x:String>
   <x:String x:Key="Dashboard.Button.OpenWebUi">Open WebUI</x:String>
   <x:String x:Key="Dashboard.Status.OpenWebUiFailed">Failed to open WebUI</x:String>
   <x:String x:Key="Dashboard.Status.SystemProxyToggleFailed">Failed to toggle system proxy</x:String>

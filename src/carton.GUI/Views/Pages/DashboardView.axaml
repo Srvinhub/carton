@@ -7,59 +7,170 @@
              x:Class="carton.Views.Pages.DashboardView"
              x:DataType="vm:DashboardViewModel">
 
+  <UserControl.Styles>
+    <Style Selector="Border.sfmCard">
+      <Setter Property="CornerRadius" Value="16"/>
+    </Style>
+
+    <Style Selector="Button.iconButton">
+      <Setter Property="Width" Value="30"/>
+      <Setter Property="Height" Value="30"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="CornerRadius" Value="15"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+    </Style>
+
+    <Style Selector="Button.iconButton:pointerover">
+      <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+    </Style>
+
+    <Style Selector="Button.iconButton:pressed">
+      <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
+    </Style>
+
+  </UserControl.Styles>
+
   <ScrollViewer>
     <StackPanel Margin="20" Spacing="16">
-      <Border Classes="card" Padding="20" IsEnabled="{Binding ShowStartupSelector}">
+      <Border Classes="card" Padding="20">
         <StackPanel Spacing="14">
-          <TextBlock Text="{DynamicResource Dashboard.Section.Configuration}" FontSize="22" FontWeight="SemiBold"/>
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <TextBlock Grid.Column="0"
+                       Text="{DynamicResource Dashboard.Section.Configuration}"
+                       FontSize="22"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center"/>
+            <Button Grid.Column="1"
+                    Classes="iconButton"
+                    Command="{Binding ResetRuntimeOptionsToConfigCommand}"
+                    IsEnabled="{Binding ShowStartupSelector}"
+                    ToolTip.Tip="{DynamicResource Dashboard.Button.ResetToConfig}">
+              <PathIcon Width="14"
+                        Height="14"
+                        Data="M12 5 V1 L7 6 L12 11 V7 C15.3 7 18 9.7 18 13 C18 16.3 15.3 19 12 19 C8.7 19 6 16.3 6 13 H4 C4 17.4 7.6 21 12 21 C16.4 21 20 17.4 20 13 C20 8.6 16.4 5 12 5 Z"/>
+            </Button>
+          </Grid>
 
-          <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
-                  BorderThickness="1"
-                  CornerRadius="8"
-                  Padding="10">
-            <StackPanel Spacing="10">
-              <Grid ColumnDefinitions="Auto,120,Auto,Auto,*" ColumnSpacing="10">
-                <TextBlock Grid.Column="0"
-                           Text="{DynamicResource Dashboard.Field.Port}"
-                           VerticalAlignment="Center"/>
-                <TextBox Grid.Column="1"
-                         Text="{Binding InboundPortText}"
-                         LostFocus="InboundPortTextBox_OnLostFocus"
-                         VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="2"
-                           Text="{DynamicResource Dashboard.Field.LogLevel}"
-                           VerticalAlignment="Center"/>
-                <ComboBox Grid.Column="3"
-                          ItemsSource="{Binding LogLevelOptions}"
-                          SelectedItem="{Binding SelectedLogLevel}"
-                          Width="90"
-                          HorizontalAlignment="Left"
-                          VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="4"
-                           Text="{DynamicResource Dashboard.LogLevel.HighVolumeHint}"
-                           IsVisible="{Binding ShowVerboseLogLevelHint}"
-                           VerticalAlignment="Center"
-                           TextWrapping="NoWrap"
-                           TextTrimming="CharacterEllipsis"
-                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-              </Grid>
+          <Grid ColumnDefinitions="*,180" ColumnSpacing="14">
+            <Border Grid.Column="0"
+                    BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12"
+                    Padding="12">
+              <StackPanel Spacing="12">
+                <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*" ColumnSpacing="10">
+                  <TextBlock Grid.Column="0"
+                             Text="{DynamicResource Dashboard.Field.Port}"
+                             Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                             VerticalAlignment="Center"/>
+                  <TextBlock Grid.Column="1"
+                             Text="{Binding InboundPortText}"
+                             FontSize="16"
+                             FontWeight="SemiBold"
+                             VerticalAlignment="Center"/>
+                  <Button Grid.Column="2"
+                          Classes="iconButton"
+                          Command="{Binding EditInboundPortCommand}"
+                          IsEnabled="{Binding ShowStartupSelector}"
+                          ToolTip.Tip="{DynamicResource Dashboard.Port.Edit}">
+                    <PathIcon Width="14"
+                              Height="14"
+                              Data="M4 16.5 V20 H7.5 L17.8 9.7 L14.3 6.2 Z M19 8.5 L20.5 7 C21.1 6.4 21.1 5.4 20.5 4.8 L19.2 3.5 C18.6 2.9 17.6 2.9 17 3.5 L15.5 5 Z"/>
+                  </Button>
+                  <Button Grid.Column="3"
+                          Classes="iconButton"
+                          IsEnabled="{Binding ShowDashboardMetrics}"
+                          ToolTip.Tip="{DynamicResource Dashboard.Menu.OpenTool}">
+                    <Button.Flyout>
+                      <MenuFlyout Placement="Bottom">
+                        <MenuItem Header="{DynamicResource Dashboard.Menu.OpenCmd}"
+                                  Command="{Binding OpenCmdTerminalProxyCommand}"
+                                  IsVisible="{Binding IsWindows}"/>
+                        <MenuItem Header="{DynamicResource Dashboard.Menu.OpenPs}"
+                                  Command="{Binding OpenPsTerminalProxyCommand}"
+                                  IsVisible="{Binding IsWindows}"/>
+                        <MenuItem Header="{DynamicResource Dashboard.Button.CopyCmdProxy}"
+                                  Command="{Binding CopyCmdTerminalProxyCommand}"
+                                  IsVisible="{Binding IsWindows}"/>
+                        <MenuItem Header="{DynamicResource Dashboard.Button.CopyPsProxy}"
+                                  Command="{Binding CopyPsTerminalProxyCommand}"
+                                  IsVisible="{Binding IsWindows}"/>
+                        <MenuItem Header="{DynamicResource Dashboard.Button.CopyLinuxProxy}"
+                                  Command="{Binding CopyLinuxTerminalProxyCommand}"
+                                  IsVisible="{Binding IsLinux}"/>
+                      </MenuFlyout>
+                    </Button.Flyout>
+                    <PathIcon Width="14"
+                              Height="14"
+                              Data="M3 6 H21 V18 H3 Z M6.5 10 L9.5 12 L6.5 14 M11.5 14 H16.5"/>
+                  </Button>
+                  <Button Grid.Column="4"
+                          Classes="iconButton"
+                          Command="{Binding OpenWebUiCommand}"
+                          IsEnabled="{Binding ShowDashboardMetrics}"
+                          ToolTip.Tip="{DynamicResource Dashboard.Button.OpenWebUi}">
+                    <PathIcon Width="14"
+                              Height="14"
+                              Data="M12 3 C7 3 3 7 3 12 C3 17 7 21 12 21 C17 21 21 17 21 12 C21 7 17 3 12 3 Z M5.2 11 H8.1 C8.2 8.7 8.8 6.7 9.8 5.2 C7.5 6 5.8 8.2 5.2 11 Z M5.2 13 C5.8 15.8 7.5 18 9.8 18.8 C8.8 17.3 8.2 15.3 8.1 13 Z M10.1 13 C10.2 15.6 11 17.8 12 18.9 C13 17.8 13.8 15.6 13.9 13 Z M13.9 11 C13.8 8.4 13 6.2 12 5.1 C11 6.2 10.2 8.4 10.1 11 Z M14.2 18.8 C16.5 18 18.2 15.8 18.8 13 H15.9 C15.8 15.3 15.2 17.3 14.2 18.8 Z M15.9 11 H18.8 C18.2 8.2 16.5 6 14.2 5.2 C15.2 6.7 15.8 8.7 15.9 11 Z"/>
+                  </Button>
+                </Grid>
 
-              <StackPanel Orientation="Horizontal" Spacing="18">
-                <CheckBox Content="{DynamicResource Dashboard.Option.AllowLan}"
-                          IsChecked="{Binding AllowLanConnections}"/>
-                <CheckBox Content="{DynamicResource Dashboard.Option.SystemProxy}"
-                          IsChecked="{Binding EnableSystemProxy}"/>
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                  <CheckBox Content="{DynamicResource Dashboard.Option.Tun}"
-                            IsChecked="{Binding EnableTunInbound}"/>
-                  <Button Content="{DynamicResource Dashboard.Button.ResetToConfig}"
-                          Command="{Binding ResetRuntimeOptionsToConfigCommand}"
-                          Padding="10,2"
-                          VerticalAlignment="Center"/>
-                </StackPanel>
+                <Grid ColumnDefinitions="Auto,120,*" ColumnSpacing="10">
+                  <TextBlock Grid.Column="0"
+                             Text="{DynamicResource Dashboard.Field.LogLevel}"
+                             VerticalAlignment="Center"/>
+                  <ComboBox Grid.Column="1"
+                            ItemsSource="{Binding LogLevelOptions}"
+                            SelectedItem="{Binding SelectedLogLevel}"
+                            Width="120"
+                            IsEnabled="{Binding ShowStartupSelector}"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"/>
+                  <TextBlock Grid.Column="2"
+                             Text="{DynamicResource Dashboard.LogLevel.HighVolumeHint}"
+                             IsVisible="{Binding ShowVerboseLogLevelHint}"
+                             VerticalAlignment="Center"
+                             TextWrapping="NoWrap"
+                             TextTrimming="CharacterEllipsis"
+                             Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                </Grid>
               </StackPanel>
-            </StackPanel>
-          </Border>
+            </Border>
+
+            <Border Grid.Column="1"
+                    BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12"
+                    Padding="10">
+              <StackPanel Spacing="10">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                  <TextBlock Grid.Column="0"
+                             Text="{DynamicResource Dashboard.Option.SystemProxy}"
+                             VerticalAlignment="Center"/>
+                  <CheckBox Grid.Column="1"
+                            IsChecked="{Binding EnableSystemProxy}"
+                            VerticalAlignment="Center"/>
+                </Grid>
+
+                <Border Height="1"
+                        Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
+
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                  <TextBlock Grid.Column="0"
+                             Text="{DynamicResource Dashboard.Option.Tun}"
+                             VerticalAlignment="Center"/>
+                    <CheckBox Grid.Column="1"
+                              IsChecked="{Binding EnableTunInbound}"
+                              IsEnabled="{Binding ShowStartupSelector}"
+                              VerticalAlignment="Center"/>
+                </Grid>
+              </StackPanel>
+            </Border>
+          </Grid>
 
           <StackPanel Spacing="12" IsVisible="{Binding ShowStartupSelector}">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
@@ -158,152 +269,186 @@
           </Grid>
         </Border>
 
-        <Border Classes="card" Padding="14,10">
-          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-            <StackPanel Grid.Column="0"
-                        Orientation="Horizontal"
-                        Spacing="8">
-              <Button Content="{DynamicResource Dashboard.Button.CopyCmdProxy}"
-                      Padding="12,4"
-                      IsVisible="{Binding IsWindows}">
-                <Button.Flyout>
-                  <MenuFlyout Placement="Bottom">
-                    <MenuItem Header="{DynamicResource Dashboard.Menu.CopyCommand}"
-                              Command="{Binding CopyCmdTerminalProxyCommand}"/>
-                    <MenuItem Header="{DynamicResource Dashboard.Menu.OpenTool}"
-                              Command="{Binding OpenCmdTerminalProxyCommand}"/>
-                  </MenuFlyout>
-                </Button.Flyout>
-              </Button>
-              <Button Content="{DynamicResource Dashboard.Button.CopyPsProxy}"
-                      Padding="12,4"
-                      IsVisible="{Binding IsWindows}">
-                <Button.Flyout>
-                  <MenuFlyout Placement="Bottom">
-                    <MenuItem Header="{DynamicResource Dashboard.Menu.CopyCommand}"
-                              Command="{Binding CopyPsTerminalProxyCommand}"/>
-                    <MenuItem Header="{DynamicResource Dashboard.Menu.OpenTool}"
-                              Command="{Binding OpenPsTerminalProxyCommand}"/>
-                  </MenuFlyout>
-                </Button.Flyout>
-              </Button>
-              <Button Content="{DynamicResource Dashboard.Button.CopyLinuxProxy}"
-                      Command="{Binding CopyLinuxTerminalProxyCommand}"
-                      Padding="12,4"
-                      IsVisible="{Binding IsLinux}"/>
-              <Button Content="{DynamicResource Dashboard.Button.OpenWebUi}"
-                      Command="{Binding OpenWebUiCommand}"
-                      Padding="12,4"/>
-              <CheckBox Content="{DynamicResource Dashboard.Option.SystemProxy}"
-                        IsChecked="{Binding EnableSystemProxy}"
-                        VerticalAlignment="Center"
-                        Margin="4,0,0,0"/>
-            </StackPanel>
-
-            <TextBlock Grid.Column="1"
-                       Text="{Binding StartupStatus}"
-                       IsVisible="{Binding StartupStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                       FontSize="11"
-                       HorizontalAlignment="Right"
-                       VerticalAlignment="Center"
-                       TextWrapping="Wrap"
-                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-          </Grid>
-        </Border>
-
-        <Grid ColumnDefinitions="1.15*,1.6*,1.15*" ColumnSpacing="16">
-          <Border Classes="card" Padding="18">
-            <StackPanel Spacing="10">
-              <TextBlock Text="{DynamicResource Dashboard.ClashMode}"
-                         FontSize="14"
-                         Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-              <ItemsControl ItemsSource="{Binding ClashModeOptions}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate DataType="vm:DashboardClashModeOptionViewModel">
-                    <RadioButton Content="{Binding DisplayName}"
-                                 GroupName="clash-mode"
-                                 IsChecked="{Binding IsSelected}"
-                                 Command="{Binding $parent[ItemsControl].((vm:DashboardViewModel)DataContext).ChangeClashModeCommand}"
-                                 CommandParameter="{Binding}"
-                                 Margin="0,0,0,6"/>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </StackPanel>
-          </Border>
-
-          <Border Grid.Column="1" Classes="card" Padding="18">
-            <StackPanel Spacing="12">
-              <TextBlock Text="{DynamicResource Dashboard.TrafficStats}"
-                         FontSize="14"
-                         Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-
-              <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
-                <StackPanel Grid.Column="0" Spacing="4">
+        <StackPanel Spacing="16">
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+            <Border Classes="card sfmCard" Padding="16">
+              <StackPanel Spacing="12">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <PathIcon Width="16"
+                            Height="16"
+                            Data="M12 5 V19 M7 10 L12 5 L17 10"
+                            VerticalAlignment="Center"/>
                   <TextBlock Text="{DynamicResource Dashboard.Label.UploadSpeed}"
-                             FontSize="12"
-                             Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                             FontSize="17"
+                             FontWeight="Bold"
+                             VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <StackPanel Spacing="4">
                   <TextBlock Text="{Binding UploadSpeed}"
-                             FontSize="18"
+                             FontSize="24"
                              FontWeight="SemiBold"/>
-                </StackPanel>
-                <StackPanel Grid.Column="1" Spacing="4">
-                  <TextBlock Text="{DynamicResource Dashboard.Label.DownloadSpeed}"
-                             FontSize="12"
-                             Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-                  <TextBlock Text="{Binding DownloadSpeed}"
-                             FontSize="18"
-                             FontWeight="SemiBold"/>
-                </StackPanel>
-              </Grid>
-
-              <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
-                <StackPanel Grid.Column="0" Spacing="4">
-                  <TextBlock Text="{DynamicResource Dashboard.Label.TotalUpload}"
-                             FontSize="12"
-                             Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
                   <TextBlock Text="{Binding TotalUpload}"
-                             FontSize="16"
-                             FontWeight="SemiBold"/>
+                             FontSize="13"
+                             Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
                 </StackPanel>
-                <StackPanel Grid.Column="1" Spacing="4">
-                  <TextBlock Text="{DynamicResource Dashboard.Label.TotalDownload}"
+
+                <Border Height="60"
+                        ClipToBounds="True">
+                  <Viewbox Stretch="Fill">
+                    <Canvas Width="120" Height="60">
+                      <Path Data="M 0,0 L 120,0"
+                            Stroke="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                            StrokeThickness="1"
+                            StrokeDashArray="5,5"/>
+                      <Path Data="M 0,20 L 120,20"
+                            Stroke="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                            StrokeThickness="1"
+                            StrokeDashArray="5,5"/>
+                      <Path Data="M 0,40 L 120,40"
+                            Stroke="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                            StrokeThickness="1"
+                            StrokeDashArray="5,5"/>
+                      <Path Data="M 0,60 L 120,60"
+                            Stroke="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                            StrokeThickness="1"
+                            StrokeDashArray="5,5"/>
+                      <Path Data="{Binding UploadTrafficFillGeometry}"
+                            Fill="{DynamicResource SystemAccentColor}"
+                            Opacity="0.12"/>
+                      <Path Data="{Binding UploadTrafficLineGeometry}"
+                            Stroke="{DynamicResource SystemAccentColor}"
+                            StrokeThickness="1.75"/>
+                    </Canvas>
+                  </Viewbox>
+                </Border>
+              </StackPanel>
+            </Border>
+
+            <Border Grid.Column="1" Classes="card sfmCard" Padding="16">
+              <StackPanel Spacing="12">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <PathIcon Width="16"
+                            Height="16"
+                            Data="M12 19 V5 M7 14 L12 19 L17 14"
+                            VerticalAlignment="Center"/>
+                  <TextBlock Text="{DynamicResource Dashboard.Label.DownloadSpeed}"
+                             FontSize="17"
+                             FontWeight="Bold"
+                             VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <StackPanel Spacing="4">
+                  <TextBlock Text="{Binding DownloadSpeed}"
+                             FontSize="24"
+                             FontWeight="SemiBold"/>
+                  <TextBlock Text="{Binding TotalDownload}"
+                             FontSize="13"
+                             Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                </StackPanel>
+
+                <Border Height="60"
+                        ClipToBounds="True">
+                  <Viewbox Stretch="Fill">
+                    <Canvas Width="120" Height="60">
+                      <Path Data="M 0,0 L 120,0"
+                            Stroke="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                            StrokeThickness="1"
+                            StrokeDashArray="5,5"/>
+                      <Path Data="M 0,20 L 120,20"
+                            Stroke="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                            StrokeThickness="1"
+                            StrokeDashArray="5,5"/>
+                      <Path Data="M 0,40 L 120,40"
+                            Stroke="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                            StrokeThickness="1"
+                            StrokeDashArray="5,5"/>
+                      <Path Data="M 0,60 L 120,60"
+                            Stroke="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                            StrokeThickness="1"
+                            StrokeDashArray="5,5"/>
+                      <Path Data="{Binding DownloadTrafficFillGeometry}"
+                            Fill="{DynamicResource SystemAccentColor}"
+                            Opacity="0.12"/>
+                      <Path Data="{Binding DownloadTrafficLineGeometry}"
+                            Stroke="{DynamicResource SystemAccentColor}"
+                            StrokeThickness="1.75"/>
+                    </Canvas>
+                  </Viewbox>
+                </Border>
+              </StackPanel>
+            </Border>
+          </Grid>
+
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+            <Border Classes="card sfmCard" Padding="16">
+              <StackPanel Spacing="12">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <PathIcon Width="16"
+                            Height="16"
+                            Data="M3 6 H21 V18 H3 Z M7 10 H17 V14 H7 Z"
+                            VerticalAlignment="Center"/>
+                  <TextBlock Text="{DynamicResource Dashboard.KernelMemory.Title}"
+                             FontSize="17"
+                             FontWeight="Bold"
+                             VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                  <TextBlock Text="{DynamicResource Dashboard.KernelMemory.KernelVersion}"
                              FontSize="12"
                              Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-                  <TextBlock Text="{Binding TotalDownload}"
-                             FontSize="16"
-                             FontWeight="SemiBold"/>
+                  <TextBlock Grid.Column="1"
+                             Text="{Binding KernelVersion}"
+                             FontSize="13"
+                             HorizontalAlignment="Right"/>
+                </Grid>
+
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                  <TextBlock Text="{DynamicResource Dashboard.KernelMemory.MemoryUsage}"
+                             FontSize="12"
+                             Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                  <TextBlock Grid.Column="1"
+                             Text="{Binding MemoryUsage}"
+                             FontSize="13"
+                             HorizontalAlignment="Right"/>
+                </Grid>
+              </StackPanel>
+            </Border>
+
+            <Border Grid.Column="1" Classes="card sfmCard" Padding="16">
+              <StackPanel Spacing="12">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <PathIcon Width="16"
+                            Height="16"
+                            Data="M4 4 H10 V10 H4 Z M14 4 H20 V10 H14 Z M4 14 H10 V20 H4 Z M14 14 H20 V20 H14 Z"
+                            VerticalAlignment="Center"/>
+                  <TextBlock Text="{DynamicResource Dashboard.ClashMode}"
+                             FontSize="17"
+                             FontWeight="Bold"
+                             VerticalAlignment="Center"/>
                 </StackPanel>
-              </Grid>
-            </StackPanel>
-          </Border>
 
-          <Border Grid.Column="2" Classes="card" Padding="18">
-            <StackPanel Spacing="12">
-              <TextBlock Text="{DynamicResource Dashboard.KernelMemory.Title}"
-                         FontSize="14"
-                         Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-
-              <StackPanel Spacing="4">
-                <TextBlock Text="{DynamicResource Dashboard.KernelMemory.KernelVersion}"
-                           FontSize="12"
-                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-                <TextBlock Text="{Binding KernelVersion}"
-                           FontSize="18"
-                           FontWeight="SemiBold"/>
+                <ItemsControl ItemsSource="{Binding ClashModeOptions}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:DashboardClashModeOptionViewModel">
+                      <Border Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                              CornerRadius="12"
+                              Padding="12,8"
+                              Margin="0,0,0,6">
+                        <RadioButton Content="{Binding DisplayName}"
+                                     GroupName="clash-mode"
+                                     IsChecked="{Binding IsSelected}"
+                                     Command="{Binding $parent[ItemsControl].((vm:DashboardViewModel)DataContext).ChangeClashModeCommand}"
+                                     CommandParameter="{Binding}"/>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
               </StackPanel>
-
-              <StackPanel Spacing="4">
-                <TextBlock Text="{DynamicResource Dashboard.KernelMemory.MemoryUsage}"
-                           FontSize="12"
-                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-                <TextBlock Text="{Binding MemoryUsage}"
-                           FontSize="18"
-                           FontWeight="SemiBold"/>
-              </StackPanel>
-            </StackPanel>
-          </Border>
-        </Grid>
+            </Border>
+          </Grid>
+        </StackPanel>
       </StackPanel>
     </StackPanel>
   </ScrollViewer>

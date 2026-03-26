@@ -22,6 +22,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Globalization;
 
 namespace carton.ViewModels;
 
@@ -30,6 +31,10 @@ public partial class DashboardViewModel : PageViewModelBase
     private const string TerminalProxyTypeCmd = "cmd";
     private const string TerminalProxyTypePowerShell = "ps";
     private const string TerminalProxyTypeLinux = "linux";
+    private const int TrafficSparklineSampleCount = 24;
+    private const double TrafficSparklineWidth = 120;
+    private const double TrafficSparklineHeight = 60;
+    private const double TrafficSparklinePadding = 4;
     private readonly ISingBoxManager? _singBoxManager;
     private readonly IKernelManager? _kernelManager;
     private readonly IProfileManager? _profileManager;
@@ -43,6 +48,8 @@ public partial class DashboardViewModel : PageViewModelBase
     private bool _suppressRuntimeOptionUpdates;
     private bool _suppressSystemProxyApply;
     private readonly DispatcherTimer _sessionDurationTimer;
+    private readonly List<long> _uploadTrafficHistory = new();
+    private readonly List<long> _downloadTrafficHistory = new();
     private bool _isOnPage = true;
     private bool _isWindowVisible = true;
     private bool _isLiveRefreshActive;
@@ -68,6 +75,18 @@ public partial class DashboardViewModel : PageViewModelBase
 
     [ObservableProperty]
     private string _totalDownload = "0 B";
+
+    [ObservableProperty]
+    private string _uploadTrafficLineGeometry = "M 0,56 L 120,56";
+
+    [ObservableProperty]
+    private string _uploadTrafficFillGeometry = "M 0,60 L 0,56 L 120,56 L 120,60 Z";
+
+    [ObservableProperty]
+    private string _downloadTrafficLineGeometry = "M 0,56 L 120,56";
+
+    [ObservableProperty]
+    private string _downloadTrafficFillGeometry = "M 0,60 L 0,56 L 120,56 L 120,60 Z";
 
     [ObservableProperty]
     private string _currentProfile = "No Profile Selected";
@@ -104,6 +123,20 @@ public partial class DashboardViewModel : PageViewModelBase
 
     [RelayCommand]
     private void OpenPsTerminalProxy() => OpenTerminalProxy(TerminalProxyTypePowerShell);
+
+    [RelayCommand]
+    private async Task EditInboundPortAsync()
+    {
+        var result = await ShowInboundPortDialogAsync();
+        if (result == null)
+        {
+            return;
+        }
+
+        AllowLanConnections = result.Value.AllowLanConnections;
+        InboundPortText = result.Value.PortText;
+        CommitInboundPortEdit();
+    }
 
     [RelayCommand]
     private async Task ResetRuntimeOptionsToConfig()
@@ -757,6 +790,97 @@ public partial class DashboardViewModel : PageViewModelBase
         return await dialog.ShowDialog<string?>(window);
     }
 
+    private async Task<(string PortText, bool AllowLanConnections)?> ShowInboundPortDialogAsync()
+    {
+        var desktop = Avalonia.Application.Current?.ApplicationLifetime
+            as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime;
+        var window = desktop?.MainWindow;
+        if (window == null)
+        {
+            return null;
+        }
+
+        var dialog = new Avalonia.Controls.Window
+        {
+            Width = 380,
+            Height = 230,
+            CanResize = false,
+            WindowStartupLocation = Avalonia.Controls.WindowStartupLocation.CenterOwner,
+            Title = GetString("Dashboard.Port.Edit", "Edit Port")
+        };
+
+        var prompt = new Avalonia.Controls.TextBlock
+        {
+            Text = GetString("Dashboard.Field.Port", "Mixed Port"),
+            Margin = new Avalonia.Thickness(0, 0, 0, 8)
+        };
+
+        var portBox = new Avalonia.Controls.TextBox
+        {
+            Text = InboundPortText,
+            Watermark = GetString("Dashboard.Field.Port", "Mixed Port"),
+            Margin = new Avalonia.Thickness(0, 0, 0, 12)
+        };
+
+        var allowLanCheckBox = new Avalonia.Controls.CheckBox
+        {
+            Content = GetString("Dashboard.Option.AllowLan", "Allow LAN Connections"),
+            IsChecked = AllowLanConnections,
+            Margin = new Avalonia.Thickness(0, 0, 0, 16)
+        };
+
+        var okBtn = new Avalonia.Controls.Button
+        {
+            Content = GetString("Settings.Data.StoreInAppDir.ConfirmButton", "Confirm"),
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+            MinWidth = 110
+        };
+
+        var cancelBtn = new Avalonia.Controls.Button
+        {
+            Content = GetString("Profiles.Form.CancelButton", "Cancel"),
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+            MinWidth = 110
+        };
+
+        cancelBtn.Click += (_, _) => dialog.Close(null);
+        okBtn.Click += (_, _) =>
+        {
+            var candidate = portBox.Text?.Trim() ?? string.Empty;
+            if (!int.TryParse(candidate, out var port) || port is < 1 or > 65535)
+            {
+                StartupStatus = GetString("Dashboard.Startup.PortOutOfRange", "Port must be between 1 and 65535");
+                return;
+            }
+
+            dialog.Close((port.ToString(), allowLanCheckBox.IsChecked == true));
+        };
+
+        var buttons = new Avalonia.Controls.StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal,
+            Spacing = 8,
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right
+        };
+        buttons.Children.Add(cancelBtn);
+        buttons.Children.Add(okBtn);
+
+        dialog.Content = new Avalonia.Controls.StackPanel
+        {
+            Margin = new Avalonia.Thickness(20),
+            Spacing = 8,
+            Children =
+            {
+                prompt,
+                portBox,
+                allowLanCheckBox,
+                buttons
+            }
+        };
+
+        return await dialog.ShowDialog<(string PortText, bool AllowLanConnections)?>(window);
+    }
+
     private async Task<string?> EnsureProfileConfigPathForStartAsync(Profile profile, string profileName)
     {
         var configPath = await _configManager!.GetConfigPathAsync(profile.Id, profile.Type);
@@ -1118,7 +1242,8 @@ public partial class DashboardViewModel : PageViewModelBase
 
     private void ResetTrafficDisplay()
     {
-        ApplyTrafficMetrics(0, 0, 0, 0);
+        ResetTrafficHistory();
+        ApplyTrafficMetrics(0, 0, 0, 0, false);
         ApplyMemoryUsage(0);
         SessionStartTimeText = "--";
     }
@@ -1213,17 +1338,102 @@ public partial class DashboardViewModel : PageViewModelBase
         _ = RefreshClashModeAsync();
     }
 
-    private void ApplyTrafficMetrics(long uploadSpeed, long downloadSpeed, long totalUpload, long totalDownload)
+    private void ApplyTrafficMetrics(long uploadSpeed, long downloadSpeed, long totalUpload, long totalDownload, bool updateHistory = true)
     {
         UploadSpeed = FormatBytes(uploadSpeed) + "/s";
         DownloadSpeed = FormatBytes(downloadSpeed) + "/s";
         TotalUpload = FormatBytes(totalUpload);
         TotalDownload = FormatBytes(totalDownload);
+
+        if (updateHistory)
+        {
+            UpdateTrafficHistory(uploadSpeed, downloadSpeed);
+        }
     }
 
     private void ApplyMemoryUsage(long memoryInUse)
     {
         MemoryUsage = FormatBytes(memoryInUse);
+    }
+
+    private void UpdateTrafficHistory(long uploadSpeed, long downloadSpeed)
+    {
+        AppendTrafficSample(_uploadTrafficHistory, uploadSpeed);
+        AppendTrafficSample(_downloadTrafficHistory, downloadSpeed);
+
+        var (uploadLine, uploadFill) = BuildSparklineGeometry(_uploadTrafficHistory);
+        UploadTrafficLineGeometry = uploadLine;
+        UploadTrafficFillGeometry = uploadFill;
+
+        var (downloadLine, downloadFill) = BuildSparklineGeometry(_downloadTrafficHistory);
+        DownloadTrafficLineGeometry = downloadLine;
+        DownloadTrafficFillGeometry = downloadFill;
+    }
+
+    private void ResetTrafficHistory()
+    {
+        _uploadTrafficHistory.Clear();
+        _downloadTrafficHistory.Clear();
+
+        var (line, fill) = BuildFlatSparklineGeometry();
+        UploadTrafficLineGeometry = line;
+        UploadTrafficFillGeometry = fill;
+        DownloadTrafficLineGeometry = line;
+        DownloadTrafficFillGeometry = fill;
+    }
+
+    private static void AppendTrafficSample(List<long> samples, long value)
+    {
+        samples.Add(Math.Max(0, value));
+        if (samples.Count > TrafficSparklineSampleCount)
+        {
+            samples.RemoveAt(0);
+        }
+    }
+
+    private static (string Line, string Fill) BuildSparklineGeometry(IReadOnlyList<long> samples)
+    {
+        if (samples.Count == 0)
+        {
+            return BuildFlatSparklineGeometry();
+        }
+
+        var maxValue = samples.Max();
+        if (maxValue <= 0)
+        {
+            return BuildFlatSparklineGeometry();
+        }
+
+        var width = TrafficSparklineWidth;
+        var height = TrafficSparklineHeight;
+        var baseline = height - TrafficSparklinePadding;
+        var drawableHeight = height - (TrafficSparklinePadding * 2);
+        var stepX = samples.Count == 1 ? 0 : width / (samples.Count - 1);
+
+        var lineBuilder = new StringBuilder();
+        var fillBuilder = new StringBuilder();
+        fillBuilder.AppendFormat(CultureInfo.InvariantCulture, "M 0,{0:0.##} ", baseline);
+
+        for (var i = 0; i < samples.Count; i++)
+        {
+            var x = stepX * i;
+            var normalized = samples[i] / (double)maxValue;
+            var y = baseline - (normalized * drawableHeight);
+
+            lineBuilder.AppendFormat(CultureInfo.InvariantCulture, "{0} {1:0.##},{2:0.##} ", i == 0 ? "M" : "L", x, y);
+            fillBuilder.AppendFormat(CultureInfo.InvariantCulture, "{0} {1:0.##},{2:0.##} ", i == 0 ? "L" : "L", x, y);
+        }
+
+        fillBuilder.AppendFormat(CultureInfo.InvariantCulture, "L {0:0.##},{1:0.##} Z", width, baseline);
+        return (lineBuilder.ToString().TrimEnd(), fillBuilder.ToString().TrimEnd());
+    }
+
+    private static (string Line, string Fill) BuildFlatSparklineGeometry()
+    {
+        var baseline = TrafficSparklineHeight - TrafficSparklinePadding;
+        var line = string.Format(CultureInfo.InvariantCulture, "M 0,{0:0.##} L {1:0.##},{0:0.##}", baseline, TrafficSparklineWidth);
+        var fill = string.Format(CultureInfo.InvariantCulture, "M 0,{0:0.##} L 0,{1:0.##} L {2:0.##},{1:0.##} L {2:0.##},{0:0.##} Z", TrafficSparklineHeight, baseline, TrafficSparklineWidth);
+        return (line, fill);
     }
 
     private async Task<ClashConfigSnapshot?> GetClashConfigFromApiAsync()
