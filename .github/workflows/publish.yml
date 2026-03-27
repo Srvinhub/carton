@@ -275,6 +275,12 @@ jobs:
       - build
     if: ${{ needs.build.result == 'success' }}
     steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            .github/release-template.md
+
       - uses: actions/download-artifact@v8
         with:
           path: dist

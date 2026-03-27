@@ -379,6 +379,12 @@ jobs:
       - build
     if: ${{ needs.build.result == 'success' }}
     steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            .github/release-template.md
+
       - name: Update release notes
         shell: bash
         env:
