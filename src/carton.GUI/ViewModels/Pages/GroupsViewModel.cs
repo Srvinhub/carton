@@ -618,8 +618,6 @@ public partial class GroupsViewModel : PageViewModelBase
             return;
         }
 
-        var hasChanges = false;
-
         for (var groupIndex = 0; groupIndex < _cachedGroups.Count; groupIndex++)
         {
             var existingGroup = _cachedGroups[groupIndex];
@@ -632,20 +630,17 @@ public partial class GroupsViewModel : PageViewModelBase
             if (!string.Equals(existingGroup.Type, updatedGroup.Type, StringComparison.Ordinal))
             {
                 existingGroup.Type = updatedGroup.Type;
-                hasChanges = true;
             }
 
             if (!string.Equals(existingGroup.SelectedOutbound, updatedGroup.Selected, StringComparison.OrdinalIgnoreCase))
             {
                 existingGroup.SelectedOutbound = updatedGroup.Selected;
-                hasChanges = true;
             }
 
             var isSelectable = !string.Equals(updatedGroup.Type, "URLTest", StringComparison.OrdinalIgnoreCase);
             if (existingGroup.IsSelectable != isSelectable)
             {
                 existingGroup.IsSelectable = isSelectable;
-                hasChanges = true;
             }
 
             var existingItemLookup = new Dictionary<string, OutboundCacheSnapshot>(existingGroup.Items.Count, StringComparer.OrdinalIgnoreCase);
@@ -697,7 +692,6 @@ public partial class GroupsViewModel : PageViewModelBase
             if (groupItemsChanged)
             {
                 existingGroup.Items = mergedItems;
-                hasChanges = true;
             }
         }
     }
@@ -1775,8 +1769,6 @@ public partial class GroupsViewModel : PageViewModelBase
             return;
         }
 
-        var hasChanges = false;
-
         for (var groupIndex = 0; groupIndex < _cachedGroups.Count; groupIndex++)
         {
             var group = _cachedGroups[groupIndex];
@@ -1788,7 +1780,6 @@ public partial class GroupsViewModel : PageViewModelBase
                     if (item.RawDelay != delay)
                     {
                         item.RawDelay = delay;
-                        hasChanges = true;
                     }
                 }
             }
