@@ -10,7 +10,7 @@
         x:Name="MainWindowRoot"
         x:DataType="vm:MainViewModel"
         Title="{DynamicResource App.Name}"
-        Width="920" Height="640"
+        Width="900" Height="640"
         MinWidth="700" MinHeight="400"
         WindowStartupLocation="CenterScreen"
         TransparencyLevelHint="None">
@@ -56,8 +56,8 @@
     <SplitView Grid.Row="1"
                IsPaneOpen="{Binding IsPaneOpen}"
                DisplayMode="Inline"
-               OpenPaneLength="240"
-               CompactPaneLength="240">
+               OpenPaneLength="200"
+               CompactPaneLength="200">
       <SplitView.Pane>
         <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}">
           <Grid RowDefinitions="Auto,*">
@@ -193,4 +193,3 @@
   </Grid>
 
 </Window>
-

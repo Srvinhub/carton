@@ -19,7 +19,7 @@ public partial class MainViewModel : ViewModelBase
 {
     private static readonly TimeSpan TransientPageUnloadDelay = TimeSpan.FromMinutes(1);
     private const double NavigationItemHeight = 40;
-    private const double NavigationItemVerticalMargin = 2;
+    private const double NavigationItemVerticalMargin = 4;
     private const double NavigationIndicatorHeight = 18;
     private readonly ISingBoxManager _singBoxManager;
     private readonly IProfileManager _profileManager;
