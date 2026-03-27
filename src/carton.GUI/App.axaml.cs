@@ -212,6 +212,16 @@ public class ResponsiveItemWidthConverter : Avalonia.Data.Converters.IValueConve
             return 220d;
         }
 
+        var reservedWidth = 0d;
+        if (parameter is string parameterText &&
+            double.TryParse(parameterText, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsedReservedWidth) &&
+            parsedReservedWidth > 0)
+        {
+            reservedWidth = parsedReservedWidth;
+        }
+
+        availableWidth = Math.Max(0, availableWidth - reservedWidth);
+
         var columns = Math.Max(
             MinColumns,
             (int)Math.Floor((availableWidth + CardGap) / (MinCardWidth + CardGap)));

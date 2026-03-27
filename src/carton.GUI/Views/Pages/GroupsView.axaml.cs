@@ -15,6 +15,10 @@ public partial class GroupsView : UserControl
     private const double ProxyToolTipAverageCharWidth = 7;
     private const double ProxyToolTipHorizontalPadding = 24;
     private const double ProxyToolTipOffset = 12;
+    private const double ProxyCardMinWidth = 200;
+    private const double ProxyCardGap = 8;
+    private const double ProxyCardHorizontalReserve = 16;
+    private const int ProxyCardMinColumns = 2;
 
     public GroupsView()
     {
@@ -190,6 +194,28 @@ public partial class GroupsView : UserControl
 
         var estimatedWidth = item.Tag.Length * ProxyToolTipAverageCharWidth + ProxyToolTipHorizontalPadding;
         return Math.Clamp(estimatedWidth, ProxyToolTipMinWidth, ProxyToolTipMaxWidth);
+    }
+
+    private void OnExpandedProxiesListSizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        if (sender is not Control { DataContext: GroupItemViewModel group })
+        {
+            return;
+        }
+
+        var width = e.NewSize.Width;
+        if (double.IsNaN(width) || width <= 0)
+        {
+            return;
+        }
+
+        var availableWidth = Math.Max(0, width - ProxyCardHorizontalReserve);
+
+        var columns = Math.Max(
+            ProxyCardMinColumns,
+            (int)Math.Floor((availableWidth + ProxyCardGap) / (ProxyCardMinWidth + ProxyCardGap)));
+
+        group.SetExpandedProxyColumns(columns);
     }
 
 }
