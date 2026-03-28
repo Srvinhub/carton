@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -24,6 +25,8 @@ public partial class GroupsViewModel : PageViewModelBase
     private readonly ClashConfigCacheService _clashConfigCache;
     private readonly ObservableCollection<OutboundItemViewModel> _expandedProxyItems = new();
     private readonly HashSet<string> _testingOutboundTags = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, (int Version, IReadOnlyList<OutboundCacheSnapshot> Items)> _collapsedPreviewCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, GroupMenuSnapshot> _trayGroupLookupBuffer = new(StringComparer.OrdinalIgnoreCase);
     private readonly DispatcherTimer _urlTestRefreshTimer;
     private IReadOnlyList<GroupCacheSnapshot> _cachedGroups = Array.Empty<GroupCacheSnapshot>();
     private DateTimeOffset? _lastCacheRefreshAt;
@@ -163,6 +166,7 @@ public partial class GroupsViewModel : PageViewModelBase
                     ReleaseViewGroups(clearStatusMessage: false);
                     _expandedGroupName = null;
                     _cachedGroups = Array.Empty<GroupCacheSnapshot>();
+                    _collapsedPreviewCache.Clear();
                     TrayGroups = Array.Empty<GroupMenuSnapshot>();
                     StatusMessage = LocalizationService.Instance[WaitingForSingBoxResourceKey];
                 });
@@ -241,6 +245,7 @@ public partial class GroupsViewModel : PageViewModelBase
                 ReleaseViewGroups(clearStatusMessage: false);
                 _expandedGroupName = null;
                 _cachedGroups = Array.Empty<GroupCacheSnapshot>();
+                _collapsedPreviewCache.Clear();
                 TrayGroups = Array.Empty<GroupMenuSnapshot>();
                 StatusMessage = status == ServiceStatus.Error
                     ? "sing-box failed to start"
@@ -289,39 +294,55 @@ public partial class GroupsViewModel : PageViewModelBase
             selectedOutboundByGroup[group.Name] = group.SelectedOutbound;
             foreach (var item in group.Items)
             {
-                if (item.RawDelay > 0 && !rawDelayByTag.ContainsKey(item.Tag))
+                if (item.RawDelay > 0)
                 {
-                    rawDelayByTag[item.Tag] = item.RawDelay;
+                    rawDelayByTag.TryAdd(item.Tag, item.RawDelay);
                 }
             }
         }
 
         var resolvedDelayLookup = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        var updatedGroups = new List<GroupCacheSnapshot>(_cachedGroups.Count);
+        var visitedTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var chainTags = new List<string>();
+        var hasChanges = false;
 
-        foreach (var group in _cachedGroups)
+        for (var groupIndex = 0; groupIndex < _cachedGroups.Count; groupIndex++)
         {
-            var updatedItems = new List<OutboundCacheSnapshot>(group.Items.Count);
-            foreach (var item in group.Items)
+            var group = _cachedGroups[groupIndex];
+            for (var i = 0; i < group.Items.Count; i++)
             {
-                var delay = ResolveEffectiveDelay(
-                    item.Tag,
-                    selectedOutboundByGroup,
-                    rawDelayByTag,
-                    resolvedDelayLookup,
-                    new HashSet<string>(StringComparer.OrdinalIgnoreCase));
-
-                updatedItems.Add(item with
+                var item = group.Items[i];
+                if (!resolvedDelayLookup.TryGetValue(item.Tag, out var delay))
                 {
-                    Delay = delay,
-                    IsSelected = string.Equals(item.Tag, group.SelectedOutbound, StringComparison.OrdinalIgnoreCase)
-                });
-            }
+                    delay = ResolveEffectiveDelay(
+                        item.Tag,
+                        selectedOutboundByGroup,
+                        rawDelayByTag,
+                        resolvedDelayLookup,
+                        visitedTags,
+                        chainTags);
+                }
 
-            updatedGroups.Add(group with { Items = updatedItems });
+                var isSelected = string.Equals(item.Tag, group.SelectedOutbound, StringComparison.OrdinalIgnoreCase);
+                if (item.Delay != delay)
+                {
+                    item.Delay = delay;
+                    hasChanges = true;
+                }
+
+                if (item.IsSelected != isSelected)
+                {
+                    item.IsSelected = isSelected;
+                    hasChanges = true;
+                }
+            }
         }
 
-        _cachedGroups = updatedGroups;
+        if (!hasChanges)
+        {
+            return;
+        }
+
         SyncViewGroupsFromCache();
         SyncExpandedProxyItemsFromCache();
         UpdateTrayGroupsFromCache();
@@ -332,7 +353,8 @@ public partial class GroupsViewModel : PageViewModelBase
         IReadOnlyDictionary<string, string> selectedOutboundByGroup,
         IReadOnlyDictionary<string, int> rawDelayByTag,
         Dictionary<string, int> resolvedDelayLookup,
-        HashSet<string> visitedTags)
+        HashSet<string> visitedTags,
+        List<string> chainTags)
     {
         if (string.IsNullOrWhiteSpace(tag))
         {
@@ -344,27 +366,50 @@ public partial class GroupsViewModel : PageViewModelBase
             return cachedDelay;
         }
 
-        if (!visitedTags.Add(tag))
+        visitedTags.Clear();
+        chainTags.Clear();
+
+        var currentTag = tag;
+        while (true)
         {
-            return 0;
+            if (string.IsNullOrWhiteSpace(currentTag))
+            {
+                break;
+            }
+
+            if (resolvedDelayLookup.TryGetValue(currentTag, out var resolvedDelay))
+            {
+                for (var i = 0; i < chainTags.Count; i++)
+                {
+                    resolvedDelayLookup[chainTags[i]] = resolvedDelay;
+                }
+
+                return resolvedDelay;
+            }
+
+            if (!visitedTags.Add(currentTag))
+            {
+                break;
+            }
+
+            chainTags.Add(currentTag);
+            if (selectedOutboundByGroup.TryGetValue(currentTag, out var nextTag) &&
+                !string.IsNullOrWhiteSpace(nextTag) &&
+                !string.Equals(nextTag, currentTag, StringComparison.OrdinalIgnoreCase))
+            {
+                currentTag = nextTag;
+                continue;
+            }
+
+            break;
         }
 
-        if (selectedOutboundByGroup.TryGetValue(tag, out var selectedOutbound) &&
-            !string.IsNullOrWhiteSpace(selectedOutbound) &&
-            !string.Equals(selectedOutbound, tag, StringComparison.OrdinalIgnoreCase))
+        var delay = rawDelayByTag.TryGetValue(currentTag, out var rawDelay) ? rawDelay : 0;
+        for (var i = 0; i < chainTags.Count; i++)
         {
-            var resolvedDelay = ResolveEffectiveDelay(
-                selectedOutbound,
-                selectedOutboundByGroup,
-                rawDelayByTag,
-                resolvedDelayLookup,
-                visitedTags);
-            resolvedDelayLookup[tag] = resolvedDelay;
-            return resolvedDelay;
+            resolvedDelayLookup[chainTags[i]] = delay;
         }
 
-        var delay = rawDelayByTag.TryGetValue(tag, out var rawDelay) ? rawDelay : 0;
-        resolvedDelayLookup[tag] = delay;
         return delay;
     }
 
@@ -573,16 +618,29 @@ public partial class GroupsViewModel : PageViewModelBase
             return;
         }
 
-        var mergedGroups = new List<GroupCacheSnapshot>(_cachedGroups.Count);
-        var hasChanges = false;
-
-        foreach (var existingGroup in _cachedGroups)
+        for (var groupIndex = 0; groupIndex < _cachedGroups.Count; groupIndex++)
         {
+            var existingGroup = _cachedGroups[groupIndex];
             if (!updatedGroupTags.Contains(existingGroup.Name) ||
                 !groupLookup.TryGetValue(existingGroup.Name, out var updatedGroup))
             {
-                mergedGroups.Add(existingGroup);
                 continue;
+            }
+
+            if (!string.Equals(existingGroup.Type, updatedGroup.Type, StringComparison.Ordinal))
+            {
+                existingGroup.Type = updatedGroup.Type;
+            }
+
+            if (!string.Equals(existingGroup.SelectedOutbound, updatedGroup.Selected, StringComparison.OrdinalIgnoreCase))
+            {
+                existingGroup.SelectedOutbound = updatedGroup.Selected;
+            }
+
+            var isSelectable = !string.Equals(updatedGroup.Type, "URLTest", StringComparison.OrdinalIgnoreCase);
+            if (existingGroup.IsSelectable != isSelectable)
+            {
+                existingGroup.IsSelectable = isSelectable;
             }
 
             var existingItemLookup = new Dictionary<string, OutboundCacheSnapshot>(existingGroup.Items.Count, StringComparer.OrdinalIgnoreCase);
@@ -592,36 +650,49 @@ public partial class GroupsViewModel : PageViewModelBase
             }
 
             var mergedItems = new List<OutboundCacheSnapshot>(updatedGroup.Items.Count);
+            var groupItemsChanged = existingGroup.Items.Count != updatedGroup.Items.Count;
             foreach (var updatedItem in updatedGroup.Items)
             {
                 existingItemLookup.TryGetValue(updatedItem.Tag, out var existingItem);
 
-                var mergedItem = new OutboundCacheSnapshot(
-                    updatedItem.Tag,
-                    updatedItem.Type,
-                    existingItem?.Delay ?? 0,
-                    updatedItem.UrlTestDelay,
-                    string.Equals(updatedItem.Tag, updatedGroup.Selected, StringComparison.OrdinalIgnoreCase));
+                if (existingItem == null)
+                {
+                    mergedItems.Add(new OutboundCacheSnapshot(
+                        updatedItem.Tag,
+                        updatedItem.Type,
+                        0,
+                        updatedItem.UrlTestDelay,
+                        string.Equals(updatedItem.Tag, updatedGroup.Selected, StringComparison.OrdinalIgnoreCase)));
+                    groupItemsChanged = true;
+                    continue;
+                }
 
-                mergedItems.Add(mergedItem);
-                hasChanges |= mergedItem != existingItem;
+                if (!string.Equals(existingItem.Type, updatedItem.Type, StringComparison.Ordinal))
+                {
+                    existingItem.Type = updatedItem.Type;
+                    groupItemsChanged = true;
+                }
+
+                if (existingItem.RawDelay != updatedItem.UrlTestDelay)
+                {
+                    existingItem.RawDelay = updatedItem.UrlTestDelay;
+                    groupItemsChanged = true;
+                }
+
+                var isSelected = string.Equals(updatedItem.Tag, updatedGroup.Selected, StringComparison.OrdinalIgnoreCase);
+                if (existingItem.IsSelected != isSelected)
+                {
+                    existingItem.IsSelected = isSelected;
+                    groupItemsChanged = true;
+                }
+
+                mergedItems.Add(existingItem);
             }
 
-            var mergedGroup = existingGroup with
+            if (groupItemsChanged)
             {
-                Type = updatedGroup.Type,
-                SelectedOutbound = updatedGroup.Selected,
-                IsSelectable = !string.Equals(updatedGroup.Type, "URLTest", StringComparison.OrdinalIgnoreCase),
-                Items = mergedItems
-            };
-
-            mergedGroups.Add(mergedGroup);
-            hasChanges |= mergedGroup != existingGroup;
-        }
-
-        if (hasChanges)
-        {
-            _cachedGroups = mergedGroups;
+                existingGroup.Items = mergedItems;
+            }
         }
     }
 
@@ -873,6 +944,9 @@ public partial class GroupsViewModel : PageViewModelBase
             }
 
             await Task.WhenAll(testTasks);
+
+            await Dispatcher.UIThread.InvokeAsync(RecalculateEffectiveDelays);
+
             if (string.Equals(group.Type, "URLTest", StringComparison.OrdinalIgnoreCase))
             {
                 await RefreshGroupSelectionAsync(group.Name);
@@ -1109,14 +1183,16 @@ public partial class GroupsViewModel : PageViewModelBase
             for (var j = 0; j < group.Items.Count; j++)
             {
                 var item = group.Items[j];
-                if (item.UrlTestDelay > 0 && !rawDelayByTag.ContainsKey(item.Tag))
+                if (item.UrlTestDelay > 0)
                 {
-                    rawDelayByTag[item.Tag] = item.UrlTestDelay;
+                    rawDelayByTag.TryAdd(item.Tag, item.UrlTestDelay);
                 }
             }
         }
 
         var resolvedDelayLookup = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var visitedTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var chainTags = new List<string>();
         foreach (var entry in rawDelayByTag)
         {
             ResolveEffectiveDelay(
@@ -1124,7 +1200,8 @@ public partial class GroupsViewModel : PageViewModelBase
                 selectedOutboundByGroup,
                 rawDelayByTag,
                 resolvedDelayLookup,
-                new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+                visitedTags,
+                chainTags);
         }
 
         return resolvedDelayLookup;
@@ -1158,7 +1235,7 @@ public partial class GroupsViewModel : PageViewModelBase
                 Type = cachedGroup.Type,
                 SelectedOutbound = cachedGroup.SelectedOutbound,
                 ItemCount = cachedGroup.Items.Count,
-                CollapsedPreviewItems = CreateCollapsedPreviewItems(cachedGroup.Items),
+                CollapsedPreviewItems = GetOrCreateCollapsedPreviewItems(cachedGroup.Name, cachedGroup.Items),
                 Items = Array.Empty<OutboundItemViewModel>(),
                 IsExpanded = false
             };
@@ -1242,10 +1319,26 @@ public partial class GroupsViewModel : PageViewModelBase
                 continue;
             }
 
-            group.Type = cachedGroup.Type;
-            group.SelectedOutbound = cachedGroup.SelectedOutbound;
-            group.ItemCount = cachedGroup.Items.Count;
-            group.CollapsedPreviewItems = CreateCollapsedPreviewItems(cachedGroup.Items);
+            if (!string.Equals(group.Type, cachedGroup.Type, StringComparison.Ordinal))
+            {
+                group.Type = cachedGroup.Type;
+            }
+
+            if (!string.Equals(group.SelectedOutbound, cachedGroup.SelectedOutbound, StringComparison.OrdinalIgnoreCase))
+            {
+                group.SelectedOutbound = cachedGroup.SelectedOutbound;
+            }
+
+            if (group.ItemCount != cachedGroup.Items.Count)
+            {
+                group.ItemCount = cachedGroup.Items.Count;
+            }
+
+            var collapsedPreviewItems = GetOrCreateCollapsedPreviewItems(cachedGroup.Name, cachedGroup.Items);
+            if (!ReferenceEquals(group.CollapsedPreviewItems, collapsedPreviewItems))
+            {
+                group.CollapsedPreviewItems = collapsedPreviewItems;
+            }
         }
     }
 
@@ -1256,25 +1349,17 @@ public partial class GroupsViewModel : PageViewModelBase
             return;
         }
 
-        var updatedGroups = new List<GroupCacheSnapshot>(_cachedGroups.Count);
-        var hasChanges = false;
-
-        foreach (var group in _cachedGroups)
+        for (var i = 0; i < _cachedGroups.Count; i++)
         {
-            if (!string.Equals(group.Name, groupTag, StringComparison.OrdinalIgnoreCase))
+            var group = _cachedGroups[i];
+            if (!string.Equals(group.Name, groupTag, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(group.SelectedOutbound, outboundTag, StringComparison.OrdinalIgnoreCase))
             {
-                updatedGroups.Add(group);
                 continue;
             }
-
-            updatedGroups.Add(group with { SelectedOutbound = outboundTag });
-            hasChanges = true;
-        }
-
-        if (hasChanges)
-        {
-            _cachedGroups = updatedGroups;
+            group.SelectedOutbound = outboundTag;
             SyncViewGroupsFromCache();
+            break;
         }
     }
 
@@ -1282,11 +1367,25 @@ public partial class GroupsViewModel : PageViewModelBase
     {
         if (_cachedGroups.Count == 0)
         {
-            TrayGroups = Array.Empty<GroupMenuSnapshot>();
+            if (TrayGroups.Count > 0)
+            {
+                TrayGroups = Array.Empty<GroupMenuSnapshot>();
+            }
+
             return;
         }
 
-        var trayGroups = new List<GroupMenuSnapshot>(_cachedGroups.Count);
+        var currentTrayGroups = TrayGroups;
+        var existingByName = _trayGroupLookupBuffer;
+        existingByName.Clear();
+        for (var i = 0; i < currentTrayGroups.Count; i++)
+        {
+            existingByName[currentTrayGroups[i].Name] = currentTrayGroups[i];
+        }
+
+        List<GroupMenuSnapshot>? updatedTrayGroups = null;
+        var index = 0;
+
         foreach (var group in _cachedGroups)
         {
             if (group.Items.Count == 0)
@@ -1294,20 +1393,94 @@ public partial class GroupsViewModel : PageViewModelBase
                 continue;
             }
 
-            var trayItems = new List<OutboundMenuSnapshot>(group.Items.Count);
-            foreach (var item in group.Items)
+            GroupMenuSnapshot targetGroup;
+            if (index < currentTrayGroups.Count && IsTrayGroupEquivalent(currentTrayGroups[index], group))
             {
-                trayItems.Add(new OutboundMenuSnapshot(item.Tag, item.Delay, item.IsSelected));
+                targetGroup = currentTrayGroups[index];
+            }
+            else if (existingByName.TryGetValue(group.Name, out var existingGroup) && IsTrayGroupEquivalent(existingGroup, group))
+            {
+                targetGroup = existingGroup;
+            }
+            else
+            {
+                targetGroup = CreateTrayGroupSnapshot(group);
             }
 
-            trayGroups.Add(new GroupMenuSnapshot(
-                group.Name,
-                group.Type,
-                group.IsSelectable,
-                trayItems));
+            if (updatedTrayGroups == null)
+            {
+                var samePosition = index < currentTrayGroups.Count && ReferenceEquals(currentTrayGroups[index], targetGroup);
+                if (!samePosition)
+                {
+                    updatedTrayGroups = new List<GroupMenuSnapshot>(Math.Max(_cachedGroups.Count, currentTrayGroups.Count));
+                    for (var i = 0; i < index && i < currentTrayGroups.Count; i++)
+                    {
+                        updatedTrayGroups.Add(currentTrayGroups[i]);
+                    }
+
+                    updatedTrayGroups.Add(targetGroup);
+                }
+            }
+            else
+            {
+                updatedTrayGroups.Add(targetGroup);
+            }
+
+            index++;
         }
 
-        TrayGroups = trayGroups;
+        if (updatedTrayGroups == null)
+        {
+            if (index == currentTrayGroups.Count)
+            {
+                return;
+            }
+
+            updatedTrayGroups = new List<GroupMenuSnapshot>(index);
+            for (var i = 0; i < index && i < currentTrayGroups.Count; i++)
+            {
+                updatedTrayGroups.Add(currentTrayGroups[i]);
+            }
+        }
+
+        TrayGroups = updatedTrayGroups;
+    }
+
+    private static GroupMenuSnapshot CreateTrayGroupSnapshot(GroupCacheSnapshot group)
+    {
+        var trayItems = new List<OutboundMenuSnapshot>(group.Items.Count);
+        for (var i = 0; i < group.Items.Count; i++)
+        {
+            var item = group.Items[i];
+            trayItems.Add(new OutboundMenuSnapshot(item.Tag, item.Delay, item.IsSelected));
+        }
+
+        return new GroupMenuSnapshot(group.Name, group.Type, group.IsSelectable, trayItems);
+    }
+
+    private static bool IsTrayGroupEquivalent(GroupMenuSnapshot trayGroup, GroupCacheSnapshot cacheGroup)
+    {
+        if (!string.Equals(trayGroup.Name, cacheGroup.Name, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(trayGroup.Type, cacheGroup.Type, StringComparison.OrdinalIgnoreCase) ||
+            trayGroup.IsSelectable != cacheGroup.IsSelectable ||
+            trayGroup.Items.Count != cacheGroup.Items.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < cacheGroup.Items.Count; i++)
+        {
+            var trayItem = trayGroup.Items[i];
+            var cacheItem = cacheGroup.Items[i];
+            if (!string.Equals(trayItem.Tag, cacheItem.Tag, StringComparison.OrdinalIgnoreCase) ||
+                trayItem.Delay != cacheItem.Delay ||
+                trayItem.IsSelected != cacheItem.IsSelected)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private void ReleaseViewGroups(bool clearStatusMessage)
@@ -1412,7 +1585,6 @@ public partial class GroupsViewModel : PageViewModelBase
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
             UpdateCachedRawDelay(item.Tag, delay);
-            RecalculateEffectiveDelays();
             SetOutboundTestingState(item.Tag, false);
 
             completedCounter[0]++;
@@ -1547,15 +1719,44 @@ public partial class GroupsViewModel : PageViewModelBase
         OutboundCacheSnapshot item,
         IAsyncRelayCommand<string>? selectOutboundCommand)
     {
-        viewModel.Tag = item.Tag;
-        viewModel.Type = item.Type;
-        viewModel.Delay = item.Delay;
-        viewModel.RawDelay = item.RawDelay;
-        viewModel.IsSelected = item.IsSelected;
-        viewModel.IsTesting = _testingOutboundTags.Contains(item.Tag);
-        viewModel.SelectOutboundCommand = selectOutboundCommand;
+        if (!string.Equals(viewModel.Tag, item.Tag, StringComparison.Ordinal))
+        {
+            viewModel.Tag = item.Tag;
+        }
 
-        if (viewModel.TestDelayCommand is AsyncRelayCommand asyncCommand)
+        if (!string.Equals(viewModel.Type, item.Type, StringComparison.Ordinal))
+        {
+            viewModel.Type = item.Type;
+        }
+
+        if (viewModel.Delay != item.Delay)
+        {
+            viewModel.Delay = item.Delay;
+        }
+
+        if (viewModel.RawDelay != item.RawDelay)
+        {
+            viewModel.RawDelay = item.RawDelay;
+        }
+
+        if (viewModel.IsSelected != item.IsSelected)
+        {
+            viewModel.IsSelected = item.IsSelected;
+        }
+
+        var isTesting = _testingOutboundTags.Contains(item.Tag);
+        var testingStateChanged = viewModel.IsTesting != isTesting;
+        if (testingStateChanged)
+        {
+            viewModel.IsTesting = isTesting;
+        }
+
+        if (!ReferenceEquals(viewModel.SelectOutboundCommand, selectOutboundCommand))
+        {
+            viewModel.SelectOutboundCommand = selectOutboundCommand;
+        }
+
+        if (testingStateChanged && viewModel.TestDelayCommand is AsyncRelayCommand asyncCommand)
         {
             asyncCommand.NotifyCanExecuteChanged();
         }
@@ -1568,35 +1769,20 @@ public partial class GroupsViewModel : PageViewModelBase
             return;
         }
 
-        var updatedGroups = new List<GroupCacheSnapshot>(_cachedGroups.Count);
-        var hasChanges = false;
-
-        foreach (var group in _cachedGroups)
+        for (var groupIndex = 0; groupIndex < _cachedGroups.Count; groupIndex++)
         {
-            var updatedItems = new List<OutboundCacheSnapshot>(group.Items.Count);
-            var groupChanged = false;
-
-            foreach (var item in group.Items)
+            var group = _cachedGroups[groupIndex];
+            for (var i = 0; i < group.Items.Count; i++)
             {
+                var item = group.Items[i];
                 if (string.Equals(item.Tag, tag, StringComparison.OrdinalIgnoreCase))
                 {
-                    var updatedItem = item with { RawDelay = delay };
-                    updatedItems.Add(updatedItem);
-                    groupChanged |= updatedItem != item;
-                }
-                else
-                {
-                    updatedItems.Add(item);
+                    if (item.RawDelay != delay)
+                    {
+                        item.RawDelay = delay;
+                    }
                 }
             }
-
-            updatedGroups.Add(groupChanged ? group with { Items = updatedItems } : group);
-            hasChanges |= groupChanged;
-        }
-
-        if (hasChanges)
-        {
-            _cachedGroups = updatedGroups;
         }
     }
 
@@ -1616,8 +1802,14 @@ public partial class GroupsViewModel : PageViewModelBase
             _testingOutboundTags.Remove(tag);
         }
 
-        foreach (var item in GetExpandedOutboundItems(tag))
+        for (var i = 0; i < _expandedProxyItems.Count; i++)
         {
+            var item = _expandedProxyItems[i];
+            if (!string.Equals(item.Tag, tag, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
             item.IsTesting = isTesting;
             if (item.TestDelayCommand is AsyncRelayCommand asyncCommand)
             {
@@ -1647,6 +1839,26 @@ public partial class GroupsViewModel : PageViewModelBase
         return 0;
     }
 
+    private IReadOnlyList<OutboundCacheSnapshot> GetOrCreateCollapsedPreviewItems(
+        string groupName,
+        IReadOnlyList<OutboundCacheSnapshot> items)
+    {
+        var version = CreateCollapsedPreviewVersion(items);
+        if (_collapsedPreviewCache.TryGetValue(groupName, out var cacheEntry) && cacheEntry.Version == version)
+        {
+            return cacheEntry.Items;
+        }
+
+        var collapsedPreviewItems = CreateCollapsedPreviewItems(items);
+        _collapsedPreviewCache[groupName] = (version, collapsedPreviewItems);
+        return collapsedPreviewItems;
+    }
+
+    private static int CreateCollapsedPreviewVersion(IReadOnlyList<OutboundCacheSnapshot> items)
+    {
+        return HashCode.Combine(items.Count, RuntimeHelpers.GetHashCode(items));
+    }
+
     private static IReadOnlyList<OutboundCacheSnapshot> CreateCollapsedPreviewItems(IReadOnlyList<OutboundCacheSnapshot> items)
     {
         const int collapsedPreviewItemLimit = 24;
@@ -1667,6 +1879,9 @@ public partial class GroupsViewModel : PageViewModelBase
 
 public partial class GroupItemViewModel : ObservableObject
 {
+    private const int DefaultExpandedProxyColumns = 3;
+    private int _expandedProxyColumns = DefaultExpandedProxyColumns;
+
     [ObservableProperty]
     private string _name = string.Empty;
 
@@ -1686,6 +1901,9 @@ public partial class GroupItemViewModel : ObservableObject
     private IReadOnlyList<OutboundItemViewModel> _items = Array.Empty<OutboundItemViewModel>();
 
     [ObservableProperty]
+    private IReadOnlyList<OutboundItemRowViewModel> _itemRows = Array.Empty<OutboundItemRowViewModel>();
+
+    [ObservableProperty]
     private bool _isExpanded;
 
     public IAsyncRelayCommand<string>? SelectOutboundCommand { get; set; }
@@ -1699,6 +1917,7 @@ public partial class GroupItemViewModel : ObservableObject
 
     partial void OnItemsChanged(IReadOnlyList<OutboundItemViewModel> value)
     {
+        RebuildItemRows();
         UpdateItemSelection();
     }
 
@@ -1719,6 +1938,53 @@ public partial class GroupItemViewModel : ObservableObject
             item.IsSelected = string.Equals(item.Tag, SelectedOutbound, StringComparison.OrdinalIgnoreCase);
         }
     }
+
+    private void RebuildItemRows()
+    {
+        if (Items == null || Items.Count == 0)
+        {
+            ItemRows = Array.Empty<OutboundItemRowViewModel>();
+            return;
+        }
+
+        var columns = Math.Max(1, _expandedProxyColumns);
+        var rows = new List<OutboundItemRowViewModel>((Items.Count + columns - 1) / columns);
+        for (var i = 0; i < Items.Count; i += columns)
+        {
+            var count = Math.Min(columns, Items.Count - i);
+            var rowItems = new List<OutboundItemViewModel>(count);
+            for (var j = 0; j < count; j++)
+            {
+                rowItems.Add(Items[i + j]);
+            }
+
+            rows.Add(new OutboundItemRowViewModel(rowItems));
+        }
+
+        ItemRows = rows;
+    }
+
+    public void SetExpandedProxyColumns(int columns)
+    {
+        var normalizedColumns = Math.Max(1, columns);
+        if (_expandedProxyColumns == normalizedColumns)
+        {
+            return;
+        }
+
+        _expandedProxyColumns = normalizedColumns;
+        RebuildItemRows();
+    }
+}
+
+public sealed class OutboundItemRowViewModel
+{
+    public OutboundItemRowViewModel(IReadOnlyList<OutboundItemViewModel> items)
+    {
+        Items = items;
+    }
+
+    public IReadOnlyList<OutboundItemViewModel> Items { get; }
 }
 
 public partial class OutboundItemViewModel : ObservableObject
@@ -1770,16 +2036,51 @@ public sealed record GroupMenuSnapshot(
     bool IsSelectable,
     IReadOnlyList<OutboundMenuSnapshot> Items);
 
-public sealed record OutboundCacheSnapshot(
-    string Tag,
-    string Type,
-    int Delay,
-    int RawDelay,
-    bool IsSelected);
+public sealed partial class OutboundCacheSnapshot : ObservableObject
+{
+    public OutboundCacheSnapshot(string tag, string type, int delay, int rawDelay, bool isSelected)
+    {
+        _tag = tag;
+        _type = type;
+        _delay = delay;
+        _rawDelay = rawDelay;
+        _isSelected = isSelected;
+    }
 
-public sealed record GroupCacheSnapshot(
-    string Name,
-    string Type,
-    string SelectedOutbound,
-    bool IsSelectable,
-    IReadOnlyList<OutboundCacheSnapshot> Items);
+    [ObservableProperty]
+    private string _tag;
+
+    [ObservableProperty]
+    private string _type;
+
+    [ObservableProperty]
+    private int _delay;
+
+    [ObservableProperty]
+    private int _rawDelay;
+
+    [ObservableProperty]
+    private bool _isSelected;
+}
+
+public sealed class GroupCacheSnapshot
+{
+    public GroupCacheSnapshot(string name, string type, string selectedOutbound, bool isSelectable, IReadOnlyList<OutboundCacheSnapshot> items)
+    {
+        Name = name;
+        Type = type;
+        SelectedOutbound = selectedOutbound;
+        IsSelectable = isSelectable;
+        Items = items;
+    }
+
+    public string Name { get; set; }
+
+    public string Type { get; set; }
+
+    public string SelectedOutbound { get; set; }
+
+    public bool IsSelectable { get; set; }
+
+    public IReadOnlyList<OutboundCacheSnapshot> Items { get; set; }
+}

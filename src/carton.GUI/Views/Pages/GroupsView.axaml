@@ -185,108 +185,152 @@
                   </ItemsControl>
                 </StackPanel>
 
-                <ItemsControl x:Name="ExpandedProxiesList"
-                              Grid.Row="1"
-                              Margin="0,0,0,-4"
-                              VerticalAlignment="Top"
-                              IsVisible="{Binding IsExpanded}"
-                              ItemsSource="{Binding Items}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate DataType="vm:OutboundItemViewModel">
-                      <Border x:Name="ProxyItemBorder"
-                              Margin="5,5,5,5"
-                              Padding="0"
-                              CornerRadius="12"
-                              HorizontalAlignment="Stretch"
-                              Classes.selected="{Binding IsSelected}"
-                              ToolTip.ShowDelay="1500"
-                              ToolTip.BetweenShowDelay="-1"
-                              ToolTip.Placement="Right"
-                              ToolTip.HorizontalOffset="12">
-                          <ToolTip.Tip>
-                            <ToolTip IsHitTestVisible="False">
-                              <TextBlock Text="{Binding Tag}"
-                                         MaxWidth="280"
-                                         TextWrapping="Wrap"
-                                         IsHitTestVisible="False"/>
-                            </ToolTip>
-                          </ToolTip.Tip>
-                          <Border.Styles>
-                            <Style Selector="Border">
-                              <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltMediumHighBrush}"/>
-                              <Setter Property="BorderBrush" Value="Transparent"/>
-                              <Setter Property="BorderThickness" Value="0"/>
-                            </Style>
-                            <Style Selector="Border.hovered:not(.selected)">
-                              <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
-                            </Style>
-                            <Style Selector="Border.selected">
-                              <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeHighBrush}"/>
-                              <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColor}"/>
-                              <Setter Property="BorderThickness" Value="1"/>
-                            </Style>
-                          </Border.Styles>
-
-                          <Grid>
-                            <Border x:Name="ProxySelectSurface"
-                                    Background="Transparent"
+                <ListBox x:Name="ExpandedProxiesList"
+                         Grid.Row="1"
+                         Margin="0,0,0,-4"
+                         VerticalAlignment="Top"
+                         BorderThickness="0"
+                         Padding="0"
+                         Background="Transparent"
+                         SelectionMode="Single"
+                         SizeChanged="OnExpandedProxiesListSizeChanged"
+                         IsVisible="{Binding IsExpanded}"
+                         ItemsSource="{Binding ItemRows}">
+                  <ListBox.Styles>
+                    <Style Selector="ListBox#ExpandedProxiesList > ListBoxItem">
+                      <Setter Property="Padding" Value="0"/>
+                      <Setter Property="Margin" Value="0"/>
+                      <Setter Property="Background" Value="Transparent"/>
+                      <Setter Property="BorderBrush" Value="Transparent"/>
+                      <Setter Property="BorderThickness" Value="0"/>
+                      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                      <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+                      <Setter Property="Template">
+                        <ControlTemplate>
+                          <ContentPresenter Content="{TemplateBinding Content}"
+                                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                                            HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                            VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </ControlTemplate>
+                      </Setter>
+                    </Style>
+                    <Style Selector="ListBox#ExpandedProxiesList > ListBoxItem:pointerover">
+                      <Setter Property="Background" Value="Transparent"/>
+                      <Setter Property="BorderBrush" Value="Transparent"/>
+                    </Style>
+                    <Style Selector="ListBox#ExpandedProxiesList > ListBoxItem:selected">
+                      <Setter Property="Background" Value="Transparent"/>
+                      <Setter Property="BorderBrush" Value="Transparent"/>
+                    </Style>
+                  </ListBox.Styles>
+                  <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <VirtualizingStackPanel/>
+                    </ItemsPanelTemplate>
+                  </ListBox.ItemsPanel>
+                  <ListBox.ItemTemplate>
+                    <DataTemplate DataType="vm:OutboundItemRowViewModel">
+                      <ItemsControl ItemsSource="{Binding Items}">
+                        <ItemsControl.ItemsPanel>
+                          <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="8"/>
+                          </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate DataType="vm:OutboundItemViewModel">
+                            <Border x:Name="ProxyItemBorder"
+                                    Width="{Binding ElementName=ExpandedProxiesList, Path=Bounds.Width, Converter={StaticResource ResponsiveItemWidthConverter}, ConverterParameter=16}"
+                                    Margin="0,5,0,5"
+                                    Padding="0"
                                     CornerRadius="12"
-                                    PointerEntered="OnProxySelectSurfacePointerEntered"
-                                    PointerExited="OnProxySelectSurfacePointerExited"
-                                    PointerPressed="OnProxySelectPressed">
-                            </Border>
-
-                            <Border Background="{DynamicResource SystemAccentColor}"
-                                    CornerRadius="12"
-                                    Opacity="0.25"
-                                    IsHitTestVisible="False"
-                                    IsVisible="{Binding IsSelected}"/>
-
-                            <StackPanel Margin="14,12"
-                                        Spacing="10"
-                                        IsHitTestVisible="False">
-                              <TextBlock helpers:EmojiTextHelper.Text="{Binding Tag}"
-                                         FontSize="13"
-                                         FontWeight="SemiBold"
-                                         MaxLines="1"
-                                         TextTrimming="CharacterEllipsis"/>
-                              <TextBlock Text="{Binding Type}"
-                                          FontSize="10"
-                                          Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-                            </StackPanel>
-
-                            <Border Margin="0,0,14,8"
-                                    HorizontalAlignment="Right"
-                                    VerticalAlignment="Bottom"
-                                    Padding="8,4"
-                                    CornerRadius="8"
-                                    PointerPressed="OnProxyTestDelayPressed"
-                                    Cursor="Hand">
+                                    HorizontalAlignment="Stretch"
+                                    Classes.selected="{Binding IsSelected}"
+                                    ToolTip.ShowDelay="1500"
+                                    ToolTip.BetweenShowDelay="-1"
+                                    ToolTip.Placement="Right"
+                                    ToolTip.HorizontalOffset="12">
+                              <ToolTip.Tip>
+                                <ToolTip IsHitTestVisible="False">
+                                  <TextBlock Text="{Binding Tag}"
+                                             MaxWidth="280"
+                                             TextWrapping="Wrap"
+                                             IsHitTestVisible="False"/>
+                                </ToolTip>
+                              </ToolTip.Tip>
                               <Border.Styles>
                                 <Style Selector="Border">
-                                  <Setter Property="Background" Value="Transparent"/>
+                                  <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltMediumHighBrush}"/>
+                                  <Setter Property="BorderBrush" Value="Transparent"/>
+                                  <Setter Property="BorderThickness" Value="1"/>
                                 </Style>
-                                <Style Selector="Border:pointerover">
+                                <Style Selector="Border.hovered:not(.selected)">
                                   <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
                                 </Style>
+                                <Style Selector="Border.selected">
+                                  <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeHighBrush}"/>
+                                  <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColor}"/>
+                                  <Setter Property="BorderThickness" Value="1"/>
+                                </Style>
                               </Border.Styles>
-                              <TextBlock Text="{Binding DelayDisplayOrIcon}"
-                                         VerticalAlignment="Center"
-                                         FontSize="11"
-                                         FontWeight="SemiBold"
-                                         Foreground="{Binding Delay, Converter={StaticResource LatencyForegroundConverter}}"/>
+
+                              <Grid>
+                                <Border x:Name="ProxySelectSurface"
+                                        Background="Transparent"
+                                        CornerRadius="12"
+                                        PointerEntered="OnProxySelectSurfacePointerEntered"
+                                        PointerExited="OnProxySelectSurfacePointerExited"
+                                        PointerPressed="OnProxySelectPressed">
+                                </Border>
+
+                                <Border Background="{DynamicResource SystemAccentColor}"
+                                        CornerRadius="12"
+                                        Opacity="0.25"
+                                        IsHitTestVisible="False"
+                                        IsVisible="{Binding IsSelected}"/>
+
+                                <StackPanel Margin="14,12"
+                                            Spacing="10"
+                                            IsHitTestVisible="False">
+                                  <TextBlock helpers:EmojiTextHelper.Text="{Binding Tag}"
+                                             FontSize="13"
+                                             FontWeight="SemiBold"
+                                             MaxLines="1"
+                                             TextTrimming="CharacterEllipsis"/>
+                                  <TextBlock Text="{Binding Type}"
+                                              FontSize="10"
+                                              Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                </StackPanel>
+
+                                <Border Margin="0,0,14,8"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Bottom"
+                                        Padding="8,4"
+                                        CornerRadius="8"
+                                        PointerPressed="OnProxyTestDelayPressed"
+                                        Cursor="Hand">
+                                  <Border.Styles>
+                                    <Style Selector="Border">
+                                      <Setter Property="Background" Value="Transparent"/>
+                                    </Style>
+                                    <Style Selector="Border:pointerover">
+                                      <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+                                    </Style>
+                                  </Border.Styles>
+                                  <TextBlock Text="{Binding DelayDisplayOrIcon}"
+                                             VerticalAlignment="Center"
+                                             FontSize="11"
+                                             FontWeight="SemiBold"
+                                             Foreground="{Binding Delay, Converter={StaticResource LatencyForegroundConverter}}"/>
+                                </Border>
+                              </Grid>
                             </Border>
-                          </Grid>
-                      </Border>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
                     </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                  <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                      <WrapPanel Orientation="Horizontal"
-                                 ItemWidth="{Binding ElementName=ExpandedProxiesList, Path=Bounds.Width, Converter={StaticResource ResponsiveItemWidthConverter}}"/>
-                    </ItemsPanelTemplate>
-                  </ItemsControl.ItemsPanel>
-                </ItemsControl>
+                  </ListBox.ItemTemplate>
+                </ListBox>
               </Grid>
             </Border>
           </DataTemplate>
